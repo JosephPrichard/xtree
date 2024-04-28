@@ -3,5 +3,7 @@ project(xmlc)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(xmlc xml.cpp
-        xml.hpp)
+add_executable(xmlc
+        xml.hpp
+        xml.cpp
+)
