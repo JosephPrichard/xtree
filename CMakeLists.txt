@@ -6,4 +6,5 @@ set(CMAKE_CXX_STANDARD 20)
 add_executable(xmlc
         xml.hpp
         xml.cpp
+        xml_test.cpp
 )
