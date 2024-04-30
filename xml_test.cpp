@@ -3,6 +3,7 @@
 //
 
 #include <memory_resource>
+#include <fstream>
 #include "xml.hpp"
 
 void test_small_document() {
@@ -12,8 +13,7 @@ void test_small_document() {
             "</Name>"
         "</Test>)";
 
-    std::pmr::monotonic_buffer_resource resource;
-    auto document = xmlc::parse_document(docstr, resource);
+    xmlc::XmlDocument document(docstr);
 
     xmlc::XmlNode node(xmlc::XmlElem("Name"));
 
@@ -43,8 +43,7 @@ void test_small_decl_document() {
             "<Name/>"
         "</Test>";
 
-    std::pmr::monotonic_buffer_resource resource;
-    auto document = xmlc::parse_document(docstr, resource);
+    xmlc::XmlDocument document(docstr);
 
     std::pmr::vector<xmlc::XmlAttr> decl_attrs;
     decl_attrs.emplace_back("version", "1.0");
@@ -101,8 +100,7 @@ void test_document_with_formatting() {
 
     auto docstr_in = flatten_spacing(docstr);
 
-    std::pmr::monotonic_buffer_resource resource;
-    auto document = xmlc::parse_document(docstr_in, resource);
+    xmlc::XmlDocument document(docstr);
 
     auto serialized_doctstr = flatten_spacing(document.serialize().c_str());
 
@@ -132,8 +130,7 @@ void test_document_complex() {
 
     auto docstr_in = flatten_spacing(docstr);
 
-    std::pmr::monotonic_buffer_resource resource;
-    auto document = xmlc::parse_document(docstr_in, resource);
+    xmlc::XmlDocument document(docstr);
 
     auto serialized_doctstr = flatten_spacing(document.serialize().c_str());
 
@@ -143,9 +140,66 @@ void test_document_complex() {
     }
 }
 
+void test_document_walk() {
+    // tests if the document is equal and if the formatting matches - this test WILL fail if the way xml is serialized
+    auto docstr =
+        "<?xml version=\"1.0\" ?> "
+        "<?xmlmeta?> "
+        "<Tests Id=\"123\"> "
+            "<Test TestId=\"0001\" TestType=\"CMD\"> "
+                "Testing 123 Testing 123"
+                "<Test TestId=\"0001\" TestType=\"CMD\"> "
+                    "The Internal Text"
+                "</Test> "
+            "</Test> "
+        "</Tests> ";
+
+    xmlc::XmlDocument document(docstr);
+
+    auto attr_value = document.find_child("Tests")->find_attr("Id")->get_value();
+    if (strcmp(attr_value, "123") != 0) {
+        fprintf(stderr, "Expected '123' for attr but got '%s'", attr_value);
+    }
+
+    auto tag = document.find_child("Tests")->find_child("Test")->get_tag();
+    if (strcmp(tag, "Test") != 0) {
+        fprintf(stderr, "Expected 'Test' for attr but got '%s'", tag);
+    }
+}
+
+void benchmark_small_document() {
+    auto start = std::chrono::steady_clock::now();
+
+    std::ifstream file("../tests/test1.xml");
+    std::string docstr;
+
+    if (file.is_open()) {
+        std::string line;
+        while (std::getline(file, line)) {
+            docstr += line + "\n";
+        }
+        file.close();
+    } else {
+        fprintf(stderr, "Failed to read test file...");
+        exit(1);
+    }
+
+    for (int i = 0; i < 100; i++) {
+        xmlc::XmlDocument document(docstr);
+        printf("");
+    }
+
+    auto stop = std::chrono::steady_clock::now();
+    auto eteTime = std::chrono::duration<double, std::milli>(stop - start);
+
+    printf("Took %.2f ms to parse all files", eteTime.count());
+}
+
 int main() {
     test_small_document();
     test_small_decl_document();
     test_document_with_formatting();
     test_document_complex();
+    test_document_walk();
+    benchmark_small_document();
 }

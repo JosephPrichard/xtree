@@ -3,6 +3,7 @@
 // Xml parsing library for C++
 
 #include <string>
+#include <utility>
 #include <vector>
 #include <variant>
 #include <memory>
@@ -51,6 +52,10 @@ namespace xmlc {
         std::pmr::string tag;
         std::pmr::vector<XmlAttr> attrs;
         std::pmr::vector<XmlNode*> children;
+
+        [[nodiscard]] const char* get_tag() const {
+            return tag.c_str();
+        }
 
         const XmlElem* find_child(const char* ctag) const;
         const XmlAttr* find_attr(const char* attr_name) const;
@@ -124,7 +129,12 @@ namespace xmlc {
 
     // represents an entire parsed document
     struct XmlDocument {
-        std::pmr::vector<XmlNode*> children;
+        std::pmr::unsynchronized_pool_resource resource; // the resource that the entire node structure lives inside
+        std::pmr::vector<XmlNode*> children{&resource};
+
+        explicit XmlDocument(const std::string& docstr);
+
+        explicit XmlDocument(std::pmr::vector<XmlNode*> children) : children(std::move(children)) {};
 
         const XmlElem* find_child(const char* tag) const {
             for (auto child : children)
@@ -166,7 +176,4 @@ namespace xmlc {
             return message.c_str();
         }
     };
-
-    // parses a xmlc document from a string into a node hierarchy - all nodes are allocated within the provided memory resource
-    XmlDocument parse_document(const std::string& docstr, std::pmr::memory_resource& resource);
 }

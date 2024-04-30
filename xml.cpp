@@ -49,6 +49,13 @@ xmlc::TokenException unexpected_token_str(const std::string& actual_tok, const s
     return xmlc::TokenException(message);
 }
 
+xmlc::TokenException invalid_token(const std::string& m, int row, int col) {
+    std::string message(m +
+        " at row " + std::to_string(row) +
+        " at col " + std::to_string(col));
+    return xmlc::TokenException(message);
+}
+
 xmlc::TokenException unexpected_token(Token actual_tok, const std::string& expected_tok, int row, int col) {
     return unexpected_token_str(token_to_string(actual_tok), expected_tok, row, col);
 }
@@ -93,7 +100,6 @@ struct XmlParser {
             }
         }
     }
-
 
     std::pmr::string read_rawtext() {
         skip_whitespace(); // skip all spaces before the start of a rawtext block
@@ -249,8 +255,6 @@ struct XmlParser {
     }
 
     xmlc::XmlNode* parse_elem() {
-        auto xml_elem = new(node_pa.allocate(1)) xmlc::XmlNode; // we must use placement new to make sure destructors on xmlc node are called
-
         auto tag_name = read_tagname();
 
         std::pmr::vector<xmlc::XmlAttr> attrs(&resource);
@@ -261,20 +265,15 @@ struct XmlParser {
             // close tag indicates we might have some children to parse
             parse_children(tag_name, children);
         } else if (tok != CloseBegTag) {
-            throw xmlc::TokenException("Unclosed attributes list within tag - should end with a close tag");
+            throw invalid_token("Unclosed attributes list within tag - should end with a close tag", row, col);
         }
 
-        xml_elem->data = xmlc::XmlElem{
-            .tag = tag_name,
-            .attrs =  std::move(attrs),
-            .children = std::move(children)
-        };
+        auto xml_elem = new(node_pa.allocate(1)) xmlc::XmlNode; // we must use placement new to make sure destructors on xmlc node are called
+        xml_elem->data = xmlc::XmlElem(std::move(tag_name), std::move(attrs), std::move(children));
         return xml_elem;
     }
 
     xmlc::XmlNode* parse_decl() {
-        auto xml_decl = new(node_pa.allocate(1)) xmlc::XmlNode; // we must use placement new to make sure destructors on xmlc node are called
-
         auto tag_name = read_tagname();
 
         std::pmr::vector<xmlc::XmlAttr> attrs(&resource);
@@ -284,10 +283,8 @@ struct XmlParser {
             throw unexpected_token(tok, "?>", row, col);
         }
 
-        xml_decl->data = xmlc::XmlDecl{
-            .tag = tag_name,
-            .attrs =  std::move(attrs)
-        };
+        auto xml_decl = new(node_pa.allocate(1)) xmlc::XmlNode; // we must use placement new to make sure destructors on xmlc node are called
+        xml_decl->data = xmlc::XmlDecl(std::move(tag_name), std::move(attrs));
         return xml_decl;
     }
 
@@ -317,26 +314,24 @@ struct XmlParser {
             attrs.emplace_back(attr);
         }
 
-        throw xmlc::TokenException("Unclosed attributes list within tag - should end with a close tag");
+        throw invalid_token("Unclosed attributes list within tag - should end with a close tag", row, col);
     }
 
-    std::pmr::vector<xmlc::XmlNode*> parse() {
-        std::pmr::vector<xmlc::XmlNode*> nodes(&resource);
+    void parse(std::pmr::vector<xmlc::XmlNode*>& root_children) {
         while (has_next()) {
             auto token = read_token();
             if (token == OpenBegTag) {
                 auto node = parse_elem();
-                nodes.push_back(node);
+                root_children.push_back(node);
             } else if (token == OpenDeclTag) {
                 auto node = parse_decl();
-                nodes.push_back(node);
+                root_children.push_back(node);
             } else if (token == None) {
-                return nodes;
+                return;
             } else {
                 throw unexpected_token(token, "'</' or '<?'", row, col);
             }
         }
-        return nodes;
     }
 };
 
@@ -393,8 +388,8 @@ std::string xmlc::XmlNode::serialize() {
     return str;
 }
 
-xmlc::XmlDocument xmlc::parse_document(const std::string& docstr, std::pmr::memory_resource& resource) {
+
+xmlc::XmlDocument::XmlDocument(const std::string& docstr) {
     XmlParser parser(docstr, resource);
-    XmlDocument document{.children = parser.parse()};
-    return document;
+    parser.parse(children);
 }
