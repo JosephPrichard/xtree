@@ -65,12 +65,8 @@ struct XmlParser {
     int index = 0;
     int row = 0;
     int col = 0;
-    std::pmr::memory_resource& resource;
-    std::pmr::polymorphic_allocator<xmlc::XmlNode> node_pa;
 
-    explicit XmlParser(const std::string& text, std::pmr::memory_resource& resource)
-        : text(text), node_pa(std::pmr::polymorphic_allocator<xmlc::XmlNode>(&resource)), resource(resource) {
-    }
+    explicit XmlParser(const std::string& text) : text(text) {}
 
     bool has_next() {
         return index < text.size();
@@ -101,10 +97,10 @@ struct XmlParser {
         }
     }
 
-    std::pmr::string read_rawtext() {
+    std::string read_rawtext() {
         skip_whitespace(); // skip all spaces before the start of a rawtext block
 
-        std::pmr::string str(&resource);
+        std::string str;
         while (has_next()) {
             char c = peek_char();
             // rawtext terminates on a new opening tag
@@ -129,8 +125,8 @@ struct XmlParser {
         return str;
     }
 
-    std::pmr::string read_tagname() {
-        std::pmr::string str(&resource);
+    std::string read_tagname() {
+        std::string str;
         while (has_next()) {
             char c = peek_char();
             // open beg tag terminates on a closing symbols or a space
@@ -146,12 +142,12 @@ struct XmlParser {
         return str;
     }
 
-    std::pmr::string read_attrvalue() {
+    std::string read_attrvalue() {
         char c = read_char();
         if (c != '\"') {
             throw invalid_symbol(c, "attr value must begin with a '\"' symbol", row, col);
         }
-        std::pmr::string str(&resource);
+        std::string str;
         while (has_next()) {
             c = read_char();
             if (c == '\"') {
@@ -163,7 +159,7 @@ struct XmlParser {
     }
 
     std::pmr::string read_attrname() {
-        std::pmr::string str(&resource);
+        std::pmr::string str;
         while (has_next()) {
             char c = peek_char();
             if (!isalnum(c)) {
@@ -227,7 +223,7 @@ struct XmlParser {
         }
     }
 
-    void parse_children(std::pmr::string& tag_name, std::pmr::vector<xmlc::XmlNode*>& children) {
+    void parse_children(std::string& tag_name, std::vector<std::unique_ptr<xmlc::XmlNode>>& children) {
         while (has_next()) {
             auto tok = read_token();
             if (tok == OpenEndTag) {
@@ -243,24 +239,24 @@ struct XmlParser {
                 break;
             } else if (tok == None) {
                 // no token that means we must attempt to parse a raw text node
-                auto node = new(node_pa.allocate(1)) xmlc::XmlNode;
+                auto node = std::make_unique<xmlc::XmlNode>();
                 node->data = read_rawtext();
-                children.emplace_back(node);
+                children.emplace_back(std::move(node));
             } else {
                 // if the token is anything else just keep on parsing
                 auto node = parse_elem();
-                children.emplace_back(node);
+                children.emplace_back(std::move(node));
             }
         }
     }
 
-    xmlc::XmlNode* parse_elem() {
+    std::unique_ptr<xmlc::XmlNode> parse_elem() {
         auto tag_name = read_tagname();
 
-        std::pmr::vector<xmlc::XmlAttr> attrs(&resource);
+        std::vector<xmlc::XmlAttr> attrs;
         auto tok = parse_attrs(attrs);
 
-        std::pmr::vector<xmlc::XmlNode*> children(&resource);
+        std::vector<std::unique_ptr<xmlc::XmlNode>> children;
         if (tok == CloseTag) {
             // close tag indicates we might have some children to parse
             parse_children(tag_name, children);
@@ -268,27 +264,27 @@ struct XmlParser {
             throw invalid_token("Unclosed attributes list within tag - should end with a close tag", row, col);
         }
 
-        auto xml_elem = new(node_pa.allocate(1)) xmlc::XmlNode; // we must use placement new to make sure destructors on xmlc node are called
+        auto xml_elem = std::make_unique<xmlc::XmlNode>(); // we must use placement new to make sure destructors on xmlc node are called
         xml_elem->data = xmlc::XmlElem(std::move(tag_name), std::move(attrs), std::move(children));
         return xml_elem;
     }
 
-    xmlc::XmlNode* parse_decl() {
+    std::unique_ptr<xmlc::XmlNode> parse_decl() {
         auto tag_name = read_tagname();
 
-        std::pmr::vector<xmlc::XmlAttr> attrs(&resource);
+        std::vector<xmlc::XmlAttr> attrs;
         auto tok = parse_attrs(attrs);
 
         if (tok != CloseDeclTag) {
             throw unexpected_token(tok, "?>", row, col);
         }
 
-        auto xml_decl = new(node_pa.allocate(1)) xmlc::XmlNode; // we must use placement new to make sure destructors on xmlc node are called
+        auto xml_decl = std::make_unique<xmlc::XmlNode>(); // we must use placement new to make sure destructors on xmlc node are called
         xml_decl->data = xmlc::XmlDecl(std::move(tag_name), std::move(attrs));
         return xml_decl;
     }
 
-    Token parse_attrs(std::pmr::vector<xmlc::XmlAttr>& attrs) {
+    Token parse_attrs(std::vector<xmlc::XmlAttr>& attrs) {
         while (has_next()) {
             xmlc::XmlAttr attr;
 
@@ -317,15 +313,15 @@ struct XmlParser {
         throw invalid_token("Unclosed attributes list within tag - should end with a close tag", row, col);
     }
 
-    void parse(std::pmr::vector<xmlc::XmlNode*>& root_children) {
+    void parse(std::vector<std::unique_ptr<xmlc::XmlNode>>& root_children) {
         while (has_next()) {
             auto token = read_token();
             if (token == OpenBegTag) {
                 auto node = parse_elem();
-                root_children.push_back(node);
+                root_children.push_back(std::move(node));
             } else if (token == OpenDeclTag) {
                 auto node = parse_decl();
-                root_children.push_back(node);
+                root_children.push_back(std::move(node));
             } else if (token == None) {
                 return;
             } else {
@@ -336,7 +332,7 @@ struct XmlParser {
 };
 
 const xmlc::XmlElem* xmlc::XmlElem::find_child(const char* ctag) const {
-    for (auto child : children)
+    for (auto& child : children)
         if (auto elem = get_if<XmlElem>(&child->data))
             if (strcmp(elem->tag.c_str(), ctag) == 0)
                 return elem;
@@ -365,7 +361,7 @@ std::string xmlc::XmlNode::serialize() {
                 str += " ";
         }
         str += "> ";
-        for (auto* child: elem->children) {
+        for (auto& child: elem->children) {
             str += child->serialize();
         }
         str += "</" + elem->tag + "> ";
@@ -390,6 +386,6 @@ std::string xmlc::XmlNode::serialize() {
 
 
 xmlc::XmlDocument::XmlDocument(const std::string& docstr) {
-    XmlParser parser(docstr, resource);
+    XmlParser parser(docstr);
     parser.parse(children);
 }

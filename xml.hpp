@@ -14,8 +14,8 @@
 namespace xmlc {
     // an attribute in a xmlc element tag
     struct XmlAttr {
-        std::pmr::string name;
-        std::pmr::string value;
+        std::string name;
+        std::string value;
 
         [[nodiscard]] const char* get_name() const {
             return name.c_str();
@@ -31,12 +31,12 @@ namespace xmlc {
     };
 
     // raw text node in the xmlc hierarchy
-    using XmlText = std::pmr::string;
+    using XmlText = std::string;
 
     // a decl node to represent xmlc document metadata
     struct XmlDecl {
-        std::pmr::string tag;
-        std::pmr::vector<XmlAttr> attrs;
+        std::string tag;
+        std::vector<XmlAttr> attrs;
 
         friend bool operator==(const XmlDecl& decl, const XmlDecl& other) {
             return decl.tag == other.tag && decl.attrs == other.attrs;
@@ -49,9 +49,9 @@ namespace xmlc {
 
     // an elem in the document hierarchy with a tag, atttributes, and other children as nodes
     struct XmlElem {
-        std::pmr::string tag;
-        std::pmr::vector<XmlAttr> attrs;
-        std::pmr::vector<XmlNode*> children;
+        std::string tag;
+        std::vector<XmlAttr> attrs;
+        std::vector<std::unique_ptr<XmlNode>> children;
 
         [[nodiscard]] const char* get_tag() const {
             return tag.c_str();
@@ -129,15 +129,14 @@ namespace xmlc {
 
     // represents an entire parsed document
     struct XmlDocument {
-        std::pmr::unsynchronized_pool_resource resource; // the resource that the entire node structure lives inside
-        std::pmr::vector<XmlNode*> children{&resource};
+        std::vector<std::unique_ptr<XmlNode>> children;
 
         explicit XmlDocument(const std::string& docstr);
 
-        explicit XmlDocument(std::pmr::vector<XmlNode*> children) : children(std::move(children)) {};
+        explicit XmlDocument(std::vector<std::unique_ptr<XmlNode>> children) : children(std::move(children)) {};
 
         const XmlElem* find_child(const char* tag) const {
-            for (auto child : children)
+            for (auto& child : children)
                 if (auto elem = get_if<XmlElem>(&child->data))
                     if (strcmp(elem->tag.c_str(), tag) == 0)
                         return elem;
@@ -146,7 +145,7 @@ namespace xmlc {
 
         std::string serialize() {
             std::string str;
-            for (auto node : children)
+            for (auto& node : children)
                 str += node->serialize();
             return str;
         }

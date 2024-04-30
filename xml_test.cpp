@@ -15,18 +15,19 @@ void test_small_document() {
 
     xmlc::XmlDocument document(docstr);
 
-    xmlc::XmlNode node(xmlc::XmlElem("Name"));
+    auto node = std::make_unique<xmlc::XmlNode>(xmlc::XmlElem("Name"));
 
-    std::pmr::vector<xmlc::XmlAttr> attrs;
+    std::vector<xmlc::XmlAttr> attrs;
     attrs.emplace_back("TestId", "0001");
     attrs.emplace_back("TestType", "CMD");
 
-    std::pmr::vector<xmlc::XmlNode*> children;
-    children.emplace_back(&node);
+    std::vector<std::unique_ptr<xmlc::XmlNode>> children;
+    children.emplace_back(std::move(node));
 
-    xmlc::XmlNode root(xmlc::XmlElem("Test", std::move(attrs), std::move(children)));
-    std::pmr::vector<xmlc::XmlNode*> root_children;
-    root_children.emplace_back(&root);
+    auto root = std::make_unique<xmlc::XmlNode>(xmlc::XmlElem("Test", std::move(attrs), std::move(children)));
+
+    std::vector<std::unique_ptr<xmlc::XmlNode>> root_children;
+    root_children.emplace_back(std::move(root));
 
     xmlc::XmlDocument expected_document(std::move(root_children));
 
@@ -45,24 +46,24 @@ void test_small_decl_document() {
 
     xmlc::XmlDocument document(docstr);
 
-    std::pmr::vector<xmlc::XmlAttr> decl_attrs;
+    std::vector<xmlc::XmlAttr> decl_attrs;
     decl_attrs.emplace_back("version", "1.0");
 
-    xmlc::XmlNode decl_node(xmlc::XmlDecl("xml", std::move(decl_attrs)));
+    auto decl_node = std::make_unique<xmlc::XmlNode>(xmlc::XmlDecl("xml", std::move(decl_attrs)));
 
-    std::pmr::vector<xmlc::XmlAttr> node_attrs;
+    std::vector<xmlc::XmlAttr> node_attrs;
     node_attrs.emplace_back("TestId", "0001");
     node_attrs.emplace_back("TestType", "CMD");
 
-    xmlc::XmlNode node(xmlc::XmlElem("Name"));
+    auto node = std::make_unique<xmlc::XmlNode>(xmlc::XmlElem("Name"));
 
-    std::pmr::vector<xmlc::XmlNode*> children;
-    children.emplace_back(&node);
+    std::vector<std::unique_ptr<xmlc::XmlNode>> children;
+    children.emplace_back(std::move(node));
 
-    xmlc::XmlNode root(xmlc::XmlElem("Test", std::move(node_attrs), std::move(children)));
-    std::pmr::vector<xmlc::XmlNode*> root_children;
-    root_children.emplace_back(&decl_node);
-    root_children.emplace_back(&root);
+    auto root = std::make_unique<xmlc::XmlNode>(xmlc::XmlElem("Test", std::move(node_attrs), std::move(children)));
+    std::vector<std::unique_ptr<xmlc::XmlNode>> root_children;
+    root_children.emplace_back(std::move(decl_node));
+    root_children.emplace_back(std::move(root));
 
     xmlc::XmlDocument expected_document(std::move(root_children));
 
