@@ -6,30 +6,31 @@
 #include <fstream>
 #include "xml.hpp"
 
-void test_small_document() {
+void test_small_document_commented() {
     auto docstr =
         "<Test TestId=\"0001\" TestType=\"CMD\">"
             "<Name>"
+            "<!-- This is a comment. -->"
             "</Name>"
         "</Test>)";
 
-    xmlc::XmlDocument document(docstr);
+    xml::XmlDocument document(docstr);
 
-    auto node = std::make_unique<xmlc::XmlNode>(xmlc::XmlElem("Name"));
+    auto node = std::make_unique<xml::XmlNode>(xml::XmlElem("Name"));
 
-    std::vector<xmlc::XmlAttr> attrs;
+    std::vector<xml::XmlAttr> attrs;
     attrs.emplace_back("TestId", "0001");
     attrs.emplace_back("TestType", "CMD");
 
-    std::vector<std::unique_ptr<xmlc::XmlNode>> children;
+    std::vector<std::unique_ptr<xml::XmlNode>> children;
     children.emplace_back(std::move(node));
 
-    auto root = std::make_unique<xmlc::XmlNode>(xmlc::XmlElem("Test", std::move(attrs), std::move(children)));
+    auto root = std::make_unique<xml::XmlNode>(xml::XmlElem("Test", std::move(attrs), std::move(children)));
 
-    std::vector<std::unique_ptr<xmlc::XmlNode>> root_children;
+    std::vector<std::unique_ptr<xml::XmlNode>> root_children;
     root_children.emplace_back(std::move(root));
 
-    xmlc::XmlDocument expected_document(std::move(root_children));
+    xml::XmlDocument expected_document(std::move(root_children));
 
     if (expected_document != document) {
         fprintf(stderr, "Failed test_small_document\nExpected: \n%s\n but got \n%s\n",
@@ -44,28 +45,28 @@ void test_small_decl_document() {
             "<Name/>"
         "</Test>";
 
-    xmlc::XmlDocument document(docstr);
+    xml::XmlDocument document(docstr);
 
-    std::vector<xmlc::XmlAttr> decl_attrs;
+    std::vector<xml::XmlAttr> decl_attrs;
     decl_attrs.emplace_back("version", "1.0");
 
-    auto decl_node = std::make_unique<xmlc::XmlNode>(xmlc::XmlDecl("xml", std::move(decl_attrs)));
+    auto decl_node = std::make_unique<xml::XmlNode>(xml::XmlDecl("xml", std::move(decl_attrs)));
 
-    std::vector<xmlc::XmlAttr> node_attrs;
+    std::vector<xml::XmlAttr> node_attrs;
     node_attrs.emplace_back("TestId", "0001");
     node_attrs.emplace_back("TestType", "CMD");
 
-    auto node = std::make_unique<xmlc::XmlNode>(xmlc::XmlElem("Name"));
+    auto node = std::make_unique<xml::XmlNode>(xml::XmlElem("Name"));
 
-    std::vector<std::unique_ptr<xmlc::XmlNode>> children;
+    std::vector<std::unique_ptr<xml::XmlNode>> children;
     children.emplace_back(std::move(node));
 
-    auto root = std::make_unique<xmlc::XmlNode>(xmlc::XmlElem("Test", std::move(node_attrs), std::move(children)));
-    std::vector<std::unique_ptr<xmlc::XmlNode>> root_children;
+    auto root = std::make_unique<xml::XmlNode>(xml::XmlElem("Test", std::move(node_attrs), std::move(children)));
+    std::vector<std::unique_ptr<xml::XmlNode>> root_children;
     root_children.emplace_back(std::move(decl_node));
     root_children.emplace_back(std::move(root));
 
-    xmlc::XmlDocument expected_document(std::move(root_children));
+    xml::XmlDocument expected_document(std::move(root_children));
 
     if (expected_document != document) {
         fprintf(stderr, "Failed test_small_document\nExpected: \n%s\n but got \n%s\n",
@@ -101,7 +102,7 @@ void test_document_with_formatting() {
 
     auto docstr_in = flatten_spacing(docstr);
 
-    xmlc::XmlDocument document(docstr);
+    xml::XmlDocument document(docstr);
 
     auto serialized_doctstr = flatten_spacing(document.serialize().c_str());
 
@@ -131,7 +132,7 @@ void test_document_complex() {
 
     auto docstr_in = flatten_spacing(docstr);
 
-    xmlc::XmlDocument document(docstr);
+    xml::XmlDocument document(docstr);
 
     auto serialized_doctstr = flatten_spacing(document.serialize().c_str());
 
@@ -155,7 +156,7 @@ void test_document_walk() {
             "</Test> "
         "</Tests> ";
 
-    xmlc::XmlDocument document(docstr);
+    xml::XmlDocument document(docstr);
 
     auto attr_value = document.find_child("Tests")->find_attr("Id")->get_value();
     if (strcmp(attr_value, "123") != 0) {
@@ -186,7 +187,7 @@ void benchmark_small_document() {
     }
 
     for (int i = 0; i < 100; i++) {
-        xmlc::XmlDocument document(docstr);
+        xml::XmlDocument document(docstr);
         printf("");
     }
 
@@ -197,7 +198,7 @@ void benchmark_small_document() {
 }
 
 int main() {
-    test_small_document();
+    test_small_document_commented();
     test_small_decl_document();
     test_document_with_formatting();
     test_document_complex();

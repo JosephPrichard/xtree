@@ -11,8 +11,8 @@
 #include <sstream>
 #include <cstring>
 
-namespace xmlc {
-    // an attribute in a xmlc element tag
+namespace xml {
+    // an attribute in a xml element tag
     struct XmlAttr {
         std::string name;
         std::string value;
@@ -30,10 +30,10 @@ namespace xmlc {
         }
     };
 
-    // raw text node in the xmlc hierarchy
+    // raw text node in the xml hierarchy
     using XmlText = std::string;
 
-    // a decl node to represent xmlc document metadata
+    // a decl node to represent xml document metadata
     struct XmlDecl {
         std::string tag;
         std::vector<XmlAttr> attrs;
@@ -90,7 +90,7 @@ namespace xmlc {
         }
     };
 
-    // a xmlc node in the document hierarchy
+    // a xml node in the document hierarchy
     struct XmlNode {
         std::variant<XmlElem, XmlText, XmlDecl> data;
 
