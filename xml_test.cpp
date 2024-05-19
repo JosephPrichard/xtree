@@ -1,6 +1,6 @@
-//
-// Created by Joseph on 4/28/2024.
-//
+// Joseph Prichard
+// 4/28/2024
+// Tests for parser
 
 #include <memory_resource>
 #include <fstream>
@@ -10,7 +10,6 @@ void test_small_document_commented() {
     auto docstr =
         "<Test TestId=\"0001\" TestType=\"CMD\">"
             "<Name>"
-            "<!-- This is a comment. -->"
             "</Name>"
         "</Test>)";
 

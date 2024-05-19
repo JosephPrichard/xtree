@@ -1,6 +1,6 @@
 // Joseph Prichard
 // 4/27/2024
-// Tests and implementation for parser
+// Implementation for parser
 
 #include <iostream>
 #include <memory_resource>
@@ -123,6 +123,7 @@ struct XmlParser {
                 if (c == '<') {
                     break;
                 }
+
                 str += c;
                 read_char();
             }
@@ -196,6 +197,7 @@ struct XmlParser {
         return str;
     }
 
+    // TODO: finish skip_comment implementation for rawtext nodes
     void skip_comment() {
         char prev = 0;
         while (has_next()) {
@@ -282,7 +284,7 @@ struct XmlParser {
                 auto etag_name = read_tagname();
                 if (etag_name != tag_name)
                     throw unexpected_token_str(std::string(etag_name), "closing tag '" + std::string(tag_name) + "'");
-                // the open end tag should also be termianted by a close tag
+                // the open end tag should also be terminated by a close tag
                 tok = read_token();
                 if (tok != CloseTag) {
                     throw unexpected_token(tok, ">");
@@ -367,9 +369,7 @@ struct XmlParser {
     void parse(std::vector<std::unique_ptr<xml::XmlNode>>& root_children) {
         while (has_next()) {
             auto token = read_token();
-            if (token == OpenComment) {
-                skip_comment();
-            } else if (token == OpenBegTag) {
+            if (token == OpenBegTag) {
                 auto node = parse_elem();
                 root_children.push_back(std::move(node));
             } else if (token == OpenDeclTag) {
@@ -422,6 +422,11 @@ std::string xml::XmlNode::serialize() {
     return str;
 }
 
+xml::XmlDocument::XmlDocument(const std::string& docstr) {
+    XmlParser parser(docstr);
+    parser.parse(children);
+}
+
 const xml::XmlElem* xml::XmlElem::find_child(const char* ctag) const {
     for (auto& child : children)
         if (auto elem = get_if<XmlElem>(&child->data))
@@ -435,9 +440,4 @@ const xml::XmlAttr* xml::XmlElem::find_attr(const char* attr_name) const {
         if (strcmp(attr.get_name(), attr_name) == 0)
             return &attr;
     return nullptr;
-}
-
-xml::XmlDocument::XmlDocument(const std::string& docstr) {
-    XmlParser parser(docstr);
-    parser.parse(children);
 }

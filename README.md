@@ -1,15 +1,29 @@
 # XMLc
-Super simple and low-level C++20 toolkit for the hierarchical tree based serialization format called XML. 
+Super simple C++20 library for the hierarchical tree based serialization format called XML.
 
-XMLc makes extensive usage of modern c++20 features such as polymorphic allocators, allowing the caller to have control 
-of where allocations happen - while still having a relatively abstract API.
+XMLc uses the recursive descent algorithm to parse a set of mutually recursive structures
+into DOM-like tree structure. The tree structure enforces ownership using `std::unique_ptr` from parent
+to child nodes. Right now, CDATA and comment nodes are parsed into raw-text nodes, but this may
+be changed in the future.
 
-Deserialize a document from a string using `xml::parse_document(std::string, std::pmr::memory_resource)`.
-The function will allocate all xml nodes within the memory resource.
+An example XML file:
+```
+<?xml version="1.0" ?>
+<?xmlmeta?>
+<Tests Id="123">
+    <Test TestId="0001" TestType="CMD">
+        Testing 123 Testing 123
+        <Test TestId="0001" TestType="CMD">
+            The Internal Text
+        </Test>
+    </Test>
+</Tests>
+```
+
+Deserialize a document from a string using the `XmlDocument` constructor.
+
 ```c++
-std::pmr::monotonic_buffer_resource resource;
-XmlDocument document = xml::parse_document(str, resource);
-XmlDocument document1 = xml::parse_document(str1, resource);
+xml::XmlDocument document(docstr);
 ```
 
 Serialize a document into a string using `xml::XmlDocument::serialize()`.
@@ -22,3 +36,5 @@ Nodes on the document tree can be accessed using utility functions.
 const char* text_data = document.find_child("test")->find_child("test1");
 const char* attr_value = document.find_child("test")->find_attr("hello123")->get_value();
 ```
+
+See more examples in `xml_test.cpp`
