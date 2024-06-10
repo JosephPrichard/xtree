@@ -7,11 +7,13 @@
 #include <array>
 #include "xml.hpp"
 
+using namespace xmldom;
+
 enum Token {
-    OpenComment, OpenDeclTag, CloseDeclTag, OpenBegTag, CloseBegTag, OpenEndTag, CloseTag, Assign, None
+    OpenComment, CloseComment, OpenCData, CloseCData, OpenDeclTag, CloseDeclTag, OpenBegTag, CloseBegTag, OpenEndTag, CloseTag, Assign, Other, End
 };
 
-std::string token_strings[] = {"<!--", "<?", "?>", "<", "/>", "</", ">", "=", "none"};
+std::string token_strings[] = {"<!--", "-->", "<![CDATA[", "]]>", "<?", "?>", "<", "/>", "</", ">", "=", "other", "end"};
 
 struct XmlParser {
     const std::string& text;
@@ -35,51 +37,43 @@ struct XmlParser {
             if (c == '\n') {
                 col = 0;
                 row += 1;
-            } else {
+            }
+            else {
                 col += 1;
             }
             return c;
-        } else {
+        }
+        else {
             throw invalid_token("Expected a character but reached end of stream");
         }
     }
 
-    void skip_whitespace() {
-        while (has_next()) {
-            if (isspace(peek_char())) {
-                read_char();
-            } else {
-                break;
-            }
-        }
-    }
-
-    [[nodiscard]] xml::TokenException invalid_symbol(char symbol, const std::string& custom_message) const {
+    [[nodiscard]] TokenException invalid_symbol(char symbol, const std::string& custom_message) const {
         std::string message =
             "Encountered invalid symbol in stream: '" + std::string(1, symbol) +
             "', " + custom_message +
             " at row " + std::to_string(row) +
             " at col " + std::to_string(col);
-        return xml::TokenException(message);
+        return TokenException(message);
     }
 
-    [[nodiscard]] xml::TokenException unexpected_token_str(const std::string& actual_tok, const std::string& expected_tok) const {
+    [[nodiscard]] TokenException unexpected_token_str(const std::string& actual_tok, const std::string& expected_tok) const {
         std::string message =
             "Encountered invalid token in stream: '" + actual_tok +
             "' but expected " + expected_tok +
             " at row " + std::to_string(row) +
             " at col " + std::to_string(col);
-        return xml::TokenException(message);
+        return TokenException(message);
     }
 
-    [[nodiscard]] xml::TokenException invalid_token(const std::string& m) const {
+    [[nodiscard]] TokenException invalid_token(const std::string& m) const {
         std::string message = m +
-            " at row " + std::to_string(row) +
-            " at col " + std::to_string(col);
-        return xml::TokenException(message);
+                              " at row " + std::to_string(row) +
+                              " at col " + std::to_string(col);
+        return TokenException(message);
     }
 
-    [[nodiscard]] xml::TokenException unexpected_token(Token actual_tok, const std::string& expected_tok) const {
+    [[nodiscard]] TokenException unexpected_token(Token actual_tok, const std::string& expected_tok) const {
         return unexpected_token_str(token_strings[actual_tok], expected_tok);
     }
 
@@ -95,21 +89,34 @@ struct XmlParser {
         }
         if (str == "&quot;") {
             return '"';
-        } else if (str == "&apos;") {
+        }
+        else if (str == "&apos;") {
             return '\'';
-        } else if (str == "&lt;") {
+        }
+        else if (str == "&lt;") {
             return '<';
-        } else if (str == "&gt;") {
+        }
+        else if (str == "&gt;") {
             return '>';
-        } if (str == "&amp;") {
+        }
+        if (str == "&amp;") {
             return '&';
-        } else {
+        }
+        else {
             throw invalid_token("Encountered invalid esc sequence: " + str + " ");
         }
     }
 
     std::string read_rawtext() {
-        skip_whitespace(); // skip all spaces before the start of a rawtext block
+        // skip all spaces before the start of a rawtext block
+        while (has_next()) {
+            if (isspace(peek_char())) {
+                read_char();
+            }
+            else {
+                break;
+            }
+        }
 
         std::string str;
         while (has_next()) {
@@ -118,7 +125,8 @@ struct XmlParser {
             if (c == '&') {
                 auto esc_char = read_escseq();
                 str += esc_char;
-            } else {
+            }
+            else {
                 // rawtext terminates on a new opening tag
                 if (c == '<') {
                     break;
@@ -143,19 +151,33 @@ struct XmlParser {
         return str;
     }
 
+    // non unicode compliant character detection
+    bool static is_name_start_char(char c) {
+        return isalpha(c) || c == ':' || c == '_';
+    }
+
+    bool static is_name_char(char c) {
+        return is_name_start_char(c) || isdigit(c) || c == '-' || c == '.';
+    }
+
     std::string read_tagname() {
         std::string str;
+
+        int i = 0;
         while (has_next()) {
             char c = peek_char();
-            // open beg tag terminates on a closing symbols or a space
+            // open begin tag terminates on a closing symbols or a space
             if (c == ' ' || c == '>' || c == '?' || c == '/') {
                 break;
             }
-            if (!isalnum(c)) {
+            if (i == 0 && is_name_start_char(c) || i > 0 && is_name_char(c)) {
+                str += c;
+                read_char();
+            }
+            else {
                 throw invalid_symbol(c, "begin tag must contain only alphanumerics");
             }
-            str += c;
-            read_char();
+            i += 1;
         }
         return str;
     }
@@ -173,7 +195,8 @@ struct XmlParser {
             if (c == '&') {
                 auto esc_char = read_escseq();
                 str += esc_char;
-            } else {
+            }
+            else {
                 read_char();
                 if (c == close_char) {
                     break;
@@ -197,27 +220,18 @@ struct XmlParser {
         return str;
     }
 
-    // TODO: finish skip_comment implementation for rawtext nodes
-    void skip_comment() {
-        char prev = 0;
-        while (has_next()) {
-            char c = peek_char();
-            if (c == '-' && prev == '-') {
-                // comment ends on a double dash, and then a gt symbol
-                char c1 = read_char();
-                if (c1 != '>') {
-                    throw invalid_token("Expected a comment to be closed with -->");
-                }
-            }
-            prev = c;
-            read_char();
-        }
-    }
-
     Token read_token() {
-        skip_whitespace();
+        while (has_next()) {
+            if (isspace(peek_char())) {
+                read_char();
+            }
+            else {
+                break;
+            }
+        }
+
         if (!has_next()) {
-            return None;
+            return End;
         }
 
         char c = peek_char();
@@ -238,8 +252,9 @@ struct XmlParser {
                 char c2 = read_char();
                 if (c1 == '-' && c2 == '-') {
                     return OpenComment;
-                } else {
-                    throw invalid_token("invalid open comment tag, must be <!--");
+                }
+                else {
+                    throw invalid_token("invalid open comment tag, must be '<!--'");
                 }
             }
             default:
@@ -247,12 +262,11 @@ struct XmlParser {
             }
         case '/': {
             read_char();
-            c = peek_char();
-            if (c == '>') {
-                read_char();
+            if (read_char() == '>') {
                 return CloseBegTag;
-            } else {
-                throw invalid_symbol(c, "first character after a / symbol must be >");
+            }
+            else {
+                throw invalid_symbol(c, "first character after a '/' symbol must be '>'");
             }
         }
         case '=':
@@ -260,23 +274,31 @@ struct XmlParser {
             return Assign;
         case '?':
             read_char();
-            c = peek_char();
-            if (c == '>') {
-                read_char();
+            if (read_char() == '>') {
                 return CloseDeclTag;
-            } else {
-                throw invalid_symbol(c, "first character after a ? symbol must be >");
+            }
+            else {
+                throw invalid_symbol(c, "first character after a '?' symbol must be '>'");
             }
         case '>':
             read_char();
             return CloseTag;
+        case '-':
+            read_char();
+
+            if (read_char() == '-' && read_char() == '>') {
+                return CloseComment;
+            }
+            else {
+                throw invalid_symbol(c, "'-' and '>' must trail a '-' symbol");
+            }
         default:
             // no read_char(), because we didn't match a specific token
-            return None;
+            return Other;
         }
     }
 
-    void parse_children(std::string& tag_name, std::vector<std::unique_ptr<xml::XmlNode>>& children) {
+    void parse_children(std::string& tag_name, std::vector<std::unique_ptr<Node>>& children) {
         while (has_next()) {
             auto tok = read_token();
             if (tok == OpenEndTag) {
@@ -284,77 +306,127 @@ struct XmlParser {
                 auto etag_name = read_tagname();
                 if (etag_name != tag_name)
                     throw unexpected_token_str(std::string(etag_name), "closing tag '" + std::string(tag_name) + "'");
+
                 // the open end tag should also be terminated by a close tag
                 tok = read_token();
                 if (tok != CloseTag) {
-                    throw unexpected_token(tok, ">");
+                    throw unexpected_token(tok, "'>'");
                 }
-                break;
-            } else if (tok == None) {
-                // no token that means we must attempt to parse a raw text node
-                auto node = std::make_unique<xml::XmlNode>();
-                node->data = read_rawtext();
+                return;
+            }
+            else if (tok == OpenComment) {
+                auto node = parse_comment();
                 children.emplace_back(std::move(node));
-            } else {
-                // if the token is anything else just keep on parsing
+            }
+            else if (tok == OpenBegTag) {
                 auto node = parse_elem();
                 children.emplace_back(std::move(node));
+            }
+            else if (tok == Other) {
+                // other token that means we must attempt to parse a raw text node
+                auto node = std::make_unique<Node>();
+                node->data = read_rawtext();
+                children.emplace_back(std::move(node));
+            }
+            else {
+                throw unexpected_token(tok, "a closing tag or a node child");
             }
         }
     }
 
-    std::unique_ptr<xml::XmlNode> parse_elem() {
-        auto tag_name = read_tagname();
-
-        std::vector<xml::XmlAttr> attrs;
-        auto tok = parse_attrs(attrs);
-
-        std::vector<std::unique_ptr<xml::XmlNode>> children;
-        if (tok == CloseTag) {
-            // close tag indicates we might have some children to parse
-            parse_children(tag_name, children);
-        } else if (tok != CloseBegTag) {
-            throw invalid_token("Unclosed attributes list within tag - should end with a close tag");
+    std::unique_ptr<Node> parse_comment() {
+        // skip all spaces before the start of a rawtext block
+        while (has_next()) {
+            if (isspace(peek_char())) {
+                read_char();
+            }
+            else {
+                break;
+            }
         }
 
-        auto xml_elem = std::make_unique<xml::XmlNode>(); // we must use placement new to make sure destructors on xml node are called
-        xml_elem->data = xml::XmlElem(std::move(tag_name), std::move(attrs), std::move(children));
+        std::string com_text;
+        while (has_next()) {
+            char c = peek_char();
+            if (c == '-' && read_token() == CloseComment) {
+                // trim all trailing spaces
+                int i = (int) com_text.size() - 1;
+                while (i >= 0) {
+                    if (!std::isspace(com_text[i])) {
+                        break;
+                    }
+                    i -= 1;
+                }
+                if (i < com_text.size()) {
+                    com_text.erase(i + 1);
+                }
+
+                auto node = std::make_unique<Node>();
+                node->data = Comment(std::move(com_text));
+                return node;
+            }
+            com_text += read_char();
+        }
+
+        throw unexpected_token(End, "a closing comment tag");
+    }
+
+    std::unique_ptr<Node> parse_elem() {
+        auto tag_name = read_tagname();
+
+        std::vector<Attr> attrs;
+        auto close_tok = parse_attrs(attrs);
+
+        std::vector<std::unique_ptr<Node>> children;
+        if (close_tok == CloseTag) {
+            // close tag indicates we might have some children to parse
+            parse_children(tag_name, children);
+        }
+        else if (close_tok != CloseBegTag) {
+            throw invalid_token("Unclosed attributes list within tag '-' should end with a close tag");
+        }
+
+        auto xml_elem = std::make_unique<Node>(); // we must use placement new to make sure destructors on xmldom node are called
+        xml_elem->data = Elem(std::move(tag_name), std::move(attrs), std::move(children));
         return xml_elem;
     }
 
-    std::unique_ptr<xml::XmlNode> parse_decl() {
+    std::unique_ptr<Node> parse_decl() {
         auto tag_name = read_tagname();
 
-        std::vector<xml::XmlAttr> attrs;
+        std::vector<Attr> attrs;
         auto tok = parse_attrs(attrs);
 
         if (tok != CloseDeclTag) {
             throw unexpected_token(tok, "?>");
         }
 
-        auto xml_decl = std::make_unique<xml::XmlNode>(); // we must use placement new to make sure destructors on xml node are called
-        xml_decl->data = xml::XmlDecl(std::move(tag_name), std::move(attrs));
+        auto xml_decl = std::make_unique<Node>(); // we must use placement new to make sure destructors on xmldom node are called
+        xml_decl->data = Decl(std::move(tag_name), std::move(attrs));
         return xml_decl;
     }
 
-    Token parse_attrs(std::vector<xml::XmlAttr>& attrs) {
+    Token parse_attrs(std::vector<Attr>& attrs) {
         while (has_next()) {
-            xml::XmlAttr attr;
+            Attr attr;
 
             auto tok = read_token();
             if (tok == CloseTag || tok == CloseBegTag || tok == CloseDeclTag) {
+                // return the closing token
                 return tok;
-            } else if (tok == None) {
+            }
+            else if (tok == Other) {
                 // no specific token match means we need to try to parse an attr name
                 auto attr_name = read_attrname();
                 attr.name = attr_name;
-            } else {
+            }
+            else {
                 throw unexpected_token(tok, "attrname, '>', or '/>'");
             }
 
             tok = read_token();
             if (tok != Assign) {
-                throw unexpected_token(tok, "=");
+                throw unexpected_token(tok, "'='");
             }
 
             auto attr_value = read_attrvalue();
@@ -363,81 +435,89 @@ struct XmlParser {
             attrs.emplace_back(attr);
         }
 
-        throw invalid_token("Unclosed attributes list within tag - should end with a close tag");
+        throw invalid_token("Unclosed attributes list within tag '-' should end with a close tag");
     }
 
-    void parse(std::vector<std::unique_ptr<xml::XmlNode>>& root_children) {
+    void parse(std::vector<std::unique_ptr<Node>>& root_children) {
         while (has_next()) {
             auto token = read_token();
             if (token == OpenBegTag) {
                 auto node = parse_elem();
                 root_children.push_back(std::move(node));
-            } else if (token == OpenDeclTag) {
+            }
+            else if (token == OpenDeclTag) {
                 auto node = parse_decl();
                 root_children.push_back(std::move(node));
-            } else if (token == None) {
+            }
+            else if (token == End) {
                 return;
-            } else {
+            }
+            else {
                 throw unexpected_token(token, "'</' or '<?'");
             }
         }
     }
 };
 
-std::string xml::XmlNode::serialize() {
-    std::string str;
-    if (auto elem = std::get_if<XmlElem>(&data)) {
-        str += "<" + elem->tag;
+std::ostream& xmldom::operator<<(std::ostream& os, const Node& node) {
+    if (auto elem = std::get_if<Elem>(&node.data)) {
+        os << "<" + elem->tag;
         for (int i = 0; i < elem->attrs.size(); i++) {
             if (i == 0)
-                str += " ";
+                os << " ";
 
             auto& attr = elem->attrs[i];
-            str += attr.name + "=" + "\"" + attr.value + "\"";
+            os << attr.name + "=" + "\"" + attr.value + "\"";
 
             if (i < elem->attrs.size() - 1)
-                str += " ";
+                os << " ";
         }
-        str += "> ";
+        os << "> ";
         for (auto& child: elem->children) {
-            str += child->serialize();
+            os << child->serialize();
         }
-        str += "</" + elem->tag + "> ";
-    } else if (auto text = std::get_if<XmlText>(&data)) {
-        str += *text;
-    } else if (auto decl = std::get_if<XmlDecl>(&data)) {
-        str += "<?" + decl->tag;
+        os << "</" + elem->tag + "> ";
+    }
+    else if (auto text = std::get_if<Text>(&node.data)) {
+        os << *text;
+    }
+    else if (auto decl = std::get_if<Decl>(&node.data)) {
+        os << "<?" + decl->tag;
         for (int i = 0; i < decl->attrs.size(); i++) {
             if (i == 0)
-                str += " ";
+                os << " ";
 
             auto& attr = decl->attrs[i];
-            str += attr.name + "=" + "\"" + attr.value + "\" ";
+            os << attr.name + "=" + "\"" + attr.value + "\" ";
 
             if (i < decl->attrs.size() - 1)
-                str += " ";
+                os << " ";
         }
-        str += "?> ";
+        os << "?> ";
     }
-    return str;
+    else if (auto comment = std::get_if<Comment>(&node.data)) {
+        os << "<!-- " + comment->text + " -->";
+    }
+    return os;
 }
 
-xml::XmlDocument::XmlDocument(const std::string& docstr) {
+Document::Document(const std::string& docstr) {
     XmlParser parser(docstr);
     parser.parse(children);
 }
 
-const xml::XmlElem* xml::XmlElem::find_child(const char* ctag) const {
-    for (auto& child : children)
-        if (auto elem = get_if<XmlElem>(&child->data))
-            if (strcmp(elem->tag.c_str(), ctag) == 0)
+const Elem* Elem::find_child(const std::string& ctag) const {
+    for (auto& child: children)
+        if (auto elem = get_if<Elem>(&child->data))
+            if (elem->tag == ctag)
                 return elem;
     return nullptr;
 }
 
-const xml::XmlAttr* xml::XmlElem::find_attr(const char* attr_name) const {
-    for (auto& attr : attrs)
-        if (strcmp(attr.get_name(), attr_name) == 0)
+const Attr* Elem::find_attr(const std::string& attr_name) const {
+    for (auto& attr: attrs)
+        if (attr.get_name() == attr_name)
             return &attr;
     return nullptr;
 }
+

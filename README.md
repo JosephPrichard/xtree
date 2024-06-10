@@ -1,40 +1,45 @@
-# XMLc
+# XML Dom
 Super simple C++20 library for the hierarchical tree based serialization format called XML.
 
-XMLc uses the recursive descent algorithm to parse a set of mutually recursive structures
+XMLDom uses the recursive descent algorithm to parse a set of mutually recursive structures
 into DOM-like tree structure. The tree structure enforces ownership using `std::unique_ptr` from parent
-to child nodes. Right now, CDATA and comment nodes are parsed into raw-text nodes, but this may
-be changed in the future.
+to child nodes.
 
 An example XML file:
 ```
-<?xml version="1.0" ?>
-<?xmlmeta?>
-<Tests Id="123">
-    <Test TestId="0001" TestType="CMD">
-        Testing 123 Testing 123
-        <Test TestId="0001" TestType="CMD">
-            The Internal Text
-        </Test>
-    </Test>
-</Tests>
+<book id="bk101">
+  <author>Gambardella, Matthew</author>
+  <title>XML Developer's Guide</title>
+  <genre>Computer</genre>
+  <price>44.95</price>
+  <publish_date>2000-10-01</publish_date>
+  <description>An in-depth look at creating applications
+  with XML.</description>
+</book>
 ```
 
-Deserialize a document from a string using the `XmlDocument` constructor.
+Deserialize a document from a string using the `Document` constructor.
 
 ```c++
-xml::XmlDocument document(docstr);
+xmldom::Document document(docstr);
 ```
 
-Serialize a document into a string using `xml::XmlDocument::serialize()`.
+Serialize a document into a string or file using `xmldom::Document::serialize()` or the `<<` operator.
 ```c++
-std::string str2 = document.serialize();
+auto str = document.serialize();
+
+std::ofstream ofs;
+ofs.open("doc.xml", std::ofstream::out | std::ofstream::trunc);
+file << document;
 ```
 
-Nodes on the document tree can be accessed using utility functions.
+Nodes on the document tree can be accessed or modified using utility functions.
 ```c++
-const char* text_data = document.find_child("test")->find_child("test1");
-const char* attr_value = document.find_child("test")->find_attr("hello123")->get_value();
+auto text_data = document.find_child("test")->find_child("test1");
+auto attr_value = document.find_child("test")->find_attr("hello123")->get_value();
+
+document.add_child(xmldom::Node(xmldom::Elem()));
+document.find_child("test")->add_attr("Test1", "Test2");
 ```
 
-See more examples in `xml_test.cpp`
+See more examples in `/tests/main.cpp`
