@@ -30,7 +30,7 @@ auto str = document.serialize();
 
 std::ofstream ofs;
 ofs.open("doc.xml", std::ofstream::out | std::ofstream::trunc);
-file << document;
+ofs << document;
 ```
 
 Nodes on the document tree can be accessed or modified using utility functions.
