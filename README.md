@@ -1,9 +1,9 @@
-# XML Dom
-Super simple C++20 library for the hierarchical tree based serialization format called XML.
+# XTree
+A C++20 library for the hierarchical tree based serialization format called XML.
 
-XMLDom uses the recursive descent algorithm to parse a set of mutually recursive structures
+XTree uses the recursive descent algorithm to parse a set of mutually recursive structures
 into DOM-like tree structure. The tree structure enforces ownership using `std::unique_ptr` from parent
-to child nodes.
+to child nodes. XTree currently only supports ASCII xml documents.
 
 An example XML file:
 ```
@@ -21,10 +21,10 @@ An example XML file:
 Deserialize a document from a string using the `Document` constructor.
 
 ```c++
-xmldom::Document document(docstr);
+xtree::Document document(docstr);
 ```
 
-Serialize a document into a string or file using `xmldom::Document::serialize()` or the `<<` operator.
+Serialize a document into a string or file using `xtree::Document::serialize()` or the `<<` operator.
 ```c++
 auto str = document.serialize();
 
@@ -35,11 +35,21 @@ file << document;
 
 Nodes on the document tree can be accessed or modified using utility functions.
 ```c++
-auto text_data = document.find_child("test")->find_child("test1");
-auto attr_value = document.find_child("test")->find_attr("hello123")->get_value();
+auto child = document.find_element("Manager")->select_element("Programmer");
+auto value = document.select_element("Employee")->select_attr("name")->get_value();
 
-document.add_child(xmldom::Node(xmldom::Elem()));
-document.find_child("test")->add_attr("Test1", "Test2");
+document.add_node(xtree::Node(xtree::Elem("CEO")));
+document.select_element("CEO")->add_attribute("name", "Joseph");
 ```
 
-See more examples in `/tests/main.cpp`
+```c++
+xtree::Document expected;
+
+auto decl = xtree::Node(xtree::Decl("xml", {{"version", "1.0"}}));
+
+auto root = xtree::Elem("Dad", {{"name", "Tom"}, {"age", "54"}});
+root.add_node(xtree::Node(xtree::Elem("Son", {{"name", "Joseph"}, {"age", "22"}})));
+
+expected.add_node(std::move(decl));
+expected.add_node(xtree::Node(std::move(root)));
+```
