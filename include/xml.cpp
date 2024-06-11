@@ -90,7 +90,7 @@ struct XmlParser {
             + std::to_string(row) +
             " at col "
             + std::to_string(col);
-        return TokenException(message);
+        return TokenException(std::move(message));
     }
 
     [[nodiscard]] TokenException unexpected_token(const std::string& actual_tok, const std::string& expected_tok) const {
@@ -103,7 +103,7 @@ struct XmlParser {
             std::to_string(row) +
             " at col " +
             std::to_string(col);
-        return TokenException(message);
+        return TokenException(std::move(message));
     }
 
     [[nodiscard]] TokenException invalid_token(const std::string& m) const {
@@ -113,7 +113,7 @@ struct XmlParser {
             std::to_string(row) +
             " at col " +
             std::to_string(col);
-        return TokenException(message);
+        return TokenException(std::move(message));
     }
 
     [[nodiscard]] TokenException end_of_stream() const {
@@ -169,10 +169,9 @@ struct XmlParser {
             if (c == ']') {
                 if (has_ahead(1)) {
                     char c1 = read();
-                    char c2 = look_ahead(1);
+                    char c2 = read();
 
                     if (c1 == ']' && c2 == '>') {
-                        read();
                         return;
                     }
                 }
@@ -279,112 +278,120 @@ struct XmlParser {
         return str;
     }
 
-    enum Token {
-        OpenCmtTok,
-        CloseCmtTok,
-        OpenDeclTok,
-        CloseDeclTok,
-        OpenBeginTok,
-        CloseBeginTok,
-        OpenEndTok,
-        CloseEndTok,
-        AssignTok,
-        TextTok,
-    };
+    static constexpr int OPEN_CMT_TOK = 0;
+    static constexpr int CLOSE_CMT_TOK = 1;
+    static constexpr int OPEN_DECL_TOK = 2;
+    static constexpr int CLOSE_DECL_TOK = 3;
+    static constexpr int OPEN_BEGIN_TOK = 4;
+    static constexpr int CLOSE_BEGIN_TOK = 5;
+    static constexpr int OPEN_END_TOK = 6;
+    static constexpr int CLOSE_END_TOK = 7;
+    static constexpr int TEXT_TOK = 8;
+    static constexpr int NO_TOK = 9;
 
-    static std::string token_string(Token token) {
-        switch (token) {
-        case OpenCmtTok:
+    static std::string token_string(int tok) {
+        switch (tok) {
+        case OPEN_CMT_TOK:
             return "'<!--'";
-        case CloseCmtTok:
+        case CLOSE_CMT_TOK:
             return "'-->'";
-        case OpenDeclTok:
+        case OPEN_DECL_TOK:
             return "'<?'";
-        case CloseDeclTok:
+        case CLOSE_DECL_TOK:
             return "'?>'";
-        case OpenBeginTok:
+        case OPEN_BEGIN_TOK:
             return "'<'";
-        case CloseBeginTok:
+        case CLOSE_BEGIN_TOK:
             return "'/>'";
-        case OpenEndTok:
+        case OPEN_END_TOK:
             return "'</'";
-        case CloseEndTok:
+        case CLOSE_END_TOK:
             return "'>'";
-        case AssignTok:
-            return "'='";
-        case TextTok:
+        case TEXT_TOK:
             return "<rawtext>";
+        default:
+            return "<unknown>";
         }
     }
 
-    std::optional<Token> read_token() {
+    int read_open_tok() {
         skip_spaces();
 
         if (!has_next()) {
-            return std::nullopt;
+            return NO_TOK;
         }
 
         char c = peek();
-        switch (c) {
-        case '<': {
+        if (c == '<') {
             read();
             char c1 = peek();
             switch (c1) {
             case '/':
                 read();
-                return OpenEndTok;
+                return OPEN_END_TOK;
             case '?':
                 read();
-                return OpenDeclTok;
+                return OPEN_DECL_TOK;
             case '!': {
                 read();
                 char c2 = read();
                 char c3 = read();
                 if (c2 == '-' && c3 == '-') {
-                    return OpenCmtTok;
+                    return OPEN_CMT_TOK;
                 }
                 else {
                     throw invalid_token("invalid open comment tag, must be '<!--'");
                 }
             }
             default:
-                return OpenBeginTok;
+                return OPEN_BEGIN_TOK;
             }
         }
+        else {
+            return TEXT_TOK;
+        }
+    }
+
+    int read_close_tok() {
+        skip_spaces();
+
+        if (!has_next()) {
+            return NO_TOK;
+        }
+
+        char c = peek();
+        switch (c) {
         case '/': {
             if (!has_ahead(1)) {
-                return TextTok;
+                return TEXT_TOK;
             }
 
             if (look_ahead(1) == '>') {
                 consume(2);
-                return CloseBeginTok;
+                return CLOSE_BEGIN_TOK;
             }
             else {
-                return TextTok;
+                return TEXT_TOK;
             }
         }
-        case '=':
-            read();
-            return AssignTok;
         case '?':
             if (!has_ahead(1)) {
-                return TextTok;
+                return TEXT_TOK;
             }
 
             if (look_ahead(1) == '>') {
                 consume(2);
-                return CloseDeclTok;
+                return CLOSE_DECL_TOK;
             }
             else {
-                return TextTok;
+                return TEXT_TOK;
             }
         case '>':
             read();
-            return CloseEndTok;
+            return CLOSE_END_TOK;
         case '-': {
             if (!has_ahead(2)) {
-                return TextTok;
+                return TEXT_TOK;
             }
 
             char c1 = look_ahead(1);
@@ -392,55 +399,52 @@ struct XmlParser {
 
             if (c1 == '-' && c2 == '>') {
                 consume(3);
-                return CloseCmtTok;
+                return CLOSE_CMT_TOK;
             }
             else if (c1 != '-') {
-                return TextTok;
+                return TEXT_TOK;
             }
             else {
                 throw invalid_symbol(c, "unclosed '-->' tag in document");
             }
         }
+        case '<':
+            throw unexpected_token(std::string(1, c), "close token: '-', '>', '?', or '/'");
         default:
-            return TextTok;
+            return TEXT_TOK;
         }
     }
 
     void parse_children(const std::string& tag_name, std::vector<std::unique_ptr<Node>>& children) {
         while (has_next()) {
-            auto opt_tok = read_token();
-            if (!opt_tok.has_value()) {
+            auto tok = read_open_tok();
+
+            if (tok == NO_TOK) {
                 throw end_of_stream();
             }
-
-            auto tok = opt_tok.value();
-            if (tok == OpenEndTok) {
-                // stop searching for children on an open end tag - the tagname after the open end tag must match
+            else if (tok == OPEN_END_TOK) {
                 auto etag_name = read_tagname();
                 if (etag_name != tag_name)
                     throw unexpected_token(std::string(etag_name), "closing tag '" + std::string(tag_name) + "'");
 
-                // the open end tag should also be terminated by a close tag
-                opt_tok = read_token();
-                if (!opt_tok.has_value()) {
+                auto tok1 = read_close_tok();
+                if (tok1 == NO_TOK) {
                     throw end_of_stream();
                 }
-
-                tok = opt_tok.value();
-                if (tok != CloseEndTok) {
-                    throw unexpected_token(token_string(tok), "'>'");
+                if (tok1 != CLOSE_END_TOK) {
+                    throw unexpected_token(token_string(tok1), "'>'");
                 }
                 return;
             }
-            else if (tok == OpenCmtTok) {
+            else if (tok == OPEN_CMT_TOK) {
                 auto node = parse_comment();
                 children.emplace_back(std::move(node));
             }
-            else if (tok == OpenBeginTok) {
+            else if (tok == OPEN_BEGIN_TOK) {
                 auto node = parse_elem();
                 children.emplace_back(std::move(node));
             }
-            else if (tok == TextTok) {
+            else if (tok == TEXT_TOK) {
                 auto raw_text = read_rawtext();
                 auto node = std::make_unique<Node>(std::move(raw_text));
                 children.emplace_back(std::move(node));
@@ -449,6 +453,8 @@ struct XmlParser {
                 throw unexpected_token(token_string(tok), "'</', '<!--', '<', <rawtext>");
             }
         }
+
+        throw end_of_stream();
     }
 
     std::unique_ptr<Node> parse_comment() {
@@ -458,13 +464,11 @@ struct XmlParser {
         while (has_next()) {
             char c = peek();
             if (c == '-') {
-                auto opt_tok = read_token();
-                if (!opt_tok.has_value()) {
+                auto tok = read_close_tok();
+                if (tok == NO_TOK) {
                     throw end_of_stream();
                 }
-
-                auto tok = opt_tok.value();
-                if (tok == CloseCmtTok) {
+                else if (tok == CLOSE_CMT_TOK) {
                     trim_spaces(com_text);
                     return std::make_unique<Node>(Comment(std::move(com_text)));
                 }
@@ -482,12 +486,11 @@ struct XmlParser {
         auto close_tok = parse_attrs(attrs);
 
         std::vector<std::unique_ptr<Node>> children;
-        if (close_tok == CloseEndTok) {
-            // close tag indicates we might have some children to parse
+        if (close_tok == CLOSE_END_TOK) {
             parse_children(tag_name, children);
         }
-        else if (close_tok != CloseBeginTok) {
-            throw invalid_token("unclosed attributes list within tag '-' should end with a close tag");
+        else if (close_tok != CLOSE_BEGIN_TOK) {
+            throw invalid_token("unclosed attributes list in tag");
         }
 
         return std::make_unique<Node>(Elem(std::move(tag_name), std::move(attrs), std::move(children)));
@@ -499,41 +502,37 @@ struct XmlParser {
         std::vector<Attr> attrs;
         auto tok = parse_attrs(attrs);
 
-        if (tok != CloseDeclTok) {
+        if (tok != CLOSE_DECL_TOK) {
             throw unexpected_token(token_string(tok), "?>");
         }
 
         return std::make_unique<Node>(Decl(std::move(tag_name), std::move(attrs)));
     }
 
-    Token parse_attrs(std::vector<Attr>& attrs) {
+    int parse_attrs(std::vector<Attr>& attrs) {
         while (has_next()) {
             Attr attr;
 
-            auto opt_tok = read_token();
-            if (!opt_tok.has_value()) {
+            auto tok = read_close_tok();
+            if (tok == NO_TOK) {
                 throw end_of_stream();
             }
-
-            auto tok = opt_tok.value();
-            if (tok == CloseEndTok || tok == CloseBeginTok || tok == CloseDeclTok) {
+            else if (tok == CLOSE_END_TOK || tok == CLOSE_BEGIN_TOK || tok == CLOSE_DECL_TOK) {
                 return tok;
             }
-            else if (tok == TextTok) {
+            else if (tok == TEXT_TOK) {
                 attr.name = read_attrname();
             }
             else {
                 throw unexpected_token(token_string(tok), "attrname, '>', or '/>'");
             }
 
-            auto opt_tok1 = read_token();
-            if (!opt_tok1.has_value()) {
+            if (!has_next()) {
                 throw end_of_stream();
             }
-
-            auto tok1 = opt_tok1.value();
-            if (tok1 != AssignTok) {
-                throw unexpected_token(token_string(tok1), "'='");
+            char c = read();
+            if (c != '=') {
+                throw unexpected_token(std::string(1, c), "'='");
             }
 
             attr.value = read_attrvalue();
@@ -545,17 +544,15 @@ struct XmlParser {
 
     void parse(std::vector<std::unique_ptr<Node>>& root_children) {
         while (has_next()) {
-            auto opt_tok = read_token();
-            if (!opt_tok.has_value()) {
+            auto tok = read_open_tok();
+            if (tok == NO_TOK) {
                 return;
             }
-
-            auto tok = opt_tok.value();
-            if (tok == OpenBeginTok) {
+            if (tok == OPEN_BEGIN_TOK) {
                 auto node = parse_elem();
                 root_children.push_back(std::move(node));
             }
-            else if (tok == OpenDeclTok) {
+            else if (tok == OPEN_DECL_TOK) {
                 auto node = parse_decl();
                 root_children.push_back(std::move(node));
             }

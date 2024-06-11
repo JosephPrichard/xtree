@@ -8,9 +8,10 @@
 #include <iostream>
 #include "../include/xml.hpp"
 
-void test_small_document_commented() {
+void test_comment() {
     auto docstr =
         "<Test TestId=\"0001\" TestType=\"CMD\">"
+        "<!-- This is a comment -->"
         "<Name>"
         "</Name>"
         "</Test>";
@@ -21,6 +22,7 @@ void test_small_document_commented() {
 
     auto elem = xtree::Elem("Test", {{"TestId",   "0001"},
                                      {"TestType", "CMD"}});
+    elem.add_node(xtree::Node(xtree::Comment("This is a comment")));
     elem.add_node(xtree::Node(xtree::Elem("Name")));
 
     auto root = xtree::Node(std::move(elem));
@@ -32,7 +34,111 @@ void test_small_document_commented() {
     }
 }
 
-void test_small_decl_document() {
+void test_dashed_comment() {
+    auto docstr =
+        "<Tests> "
+        "<!-- This is -a- comment -->"
+        "</Tests> ";
+
+    xtree::Document document(docstr);
+
+    xtree::Document expected;
+
+    auto root = xtree::Elem("Tests");
+    root.add_node(xtree::Node(xtree::Comment("This is -a- comment")));
+
+    expected.add_node(xtree::Node(std::move(root)));
+
+    if (expected != document) {
+        std::cerr << "Failed test_comment_document\nExpected: \n" <<
+                  expected.serialize() << "\n but got \n" << document.serialize() << std::endl;
+    }
+}
+
+void test_unopened_tag() {
+    auto docstr =
+        "<Test>"
+        "--> /> ?> >"
+        "</Test>";
+
+    xtree::Document document(docstr);
+
+    xtree::Document expected;
+
+    auto elem = xtree::Elem("Test");
+    elem.add_node(xtree::Node(xtree::Text("--> /> ?> >")));
+
+    auto root = xtree::Node(std::move(elem));
+    expected.add_node(std::move(root));
+
+    if (expected != document) {
+        std::cerr << "Failed test_small_document\nExpected: \n" << expected.serialize() <<
+                  "\n but got \n" << document.serialize() << std::endl;
+    }
+}
+
+void test_cdata() {
+    auto docstr =
+        "<Test TestId=\"0001\" TestType=\"CMD\">"
+        "<Name>"
+        "Testing <![CDATA[Xml Text <Txt> </Txt>]]>"
+        "</Name>"
+        "</Test>";
+
+    xtree::Document document(docstr);
+
+    xtree::Document expected;
+
+    auto elem = xtree::Elem("Test", {{"TestId",   "0001"},
+                                     {"TestType", "CMD"}});
+
+    auto inner_elem = xtree::Elem("Name");
+    inner_elem.add_node(xtree::Node(xtree::Text("Testing Xml Text <Txt> </Txt>")));
+
+    elem.add_node(xtree::Node(std::move(inner_elem)));
+
+    auto root = xtree::Node(std::move(elem));
+    expected.add_node(std::move(root));
+
+    if (expected != document) {
+        std::cerr << "Failed test_small_document\nExpected: \n" << expected.serialize() <<
+                  "\n but got \n" << document.serialize() << std::endl;
+    }
+}
+
+void test_unclosed() {
+    auto docstr =
+        "<Test TestId=\"0001\" TestType=\"CMD\">"
+        "<Name/>";
+
+    try {
+        xtree::Document document(docstr);
+    } catch (std::exception& ex) {
+        auto expected_msg = "reached the end of the stream while parsing at row 0 at col 42";
+        if (strcmp(ex.what(), expected_msg) != 0) {
+            std::cerr << "Expected message to read\n" << expected_msg << "\n but got \n" << ex.what() << std::endl;
+        }
+        return;
+    }
+    std::cerr << "Expected document parse to throw an exception";
+}
+
+void test_unequal_tags() {
+    auto docstr = "<Test> <Name/> </Test1>";
+
+    try {
+        xtree::Document document(docstr);
+    } catch (std::exception& ex) {
+        auto expected_msg = "encountered invalid token in stream: Test1 but expected closing tag 'Test' at row 0 at col 22";
+        if (strcmp(ex.what(), expected_msg) != 0) {
+            std::cerr << "Expected message to read\n" << expected_msg << "\n but got \n" << ex.what() << std::endl;
+        }
+        return;
+    }
+    std::cerr << "Expected document parse to throw an exception";
+}
+
+void test_decl() {
     auto docstr =
         "<?xml version=\"1.0\" ?>"
         "<Test TestId=\"0001\" TestType=\"CMD\">"
@@ -53,7 +159,7 @@ void test_small_decl_document() {
     expected.add_node(xtree::Node(std::move(root)));
 
     if (expected != document) {
-        std::cerr << "Failed test_small_decl_document\nExpected: \n" << expected.serialize() <<
+        std::cerr << "Failed test_decl\nExpected: \n" << expected.serialize() <<
                   "\n but got \n" << document.serialize() << std::endl;
     }
 }
@@ -70,7 +176,7 @@ std::string flatten_spacing(const char* str) {
     return new_str;
 }
 
-void test_document_with_formatting() {
+void test_larger_doc() {
     auto docstr =
         "<?xtree version=\"1.0\" ?> "
         "<?xmlmeta?> "
@@ -90,11 +196,11 @@ void test_document_with_formatting() {
     auto ser_docstr = flatten_spacing(document.serialize().c_str());
 
     if (docstr_in != ser_docstr) {
-        std::cerr << "Failed test_document_with_formatting\nExpected: \n" << docstr << "\n but got \n" << ser_docstr << std::endl;
+        std::cerr << "Failed test_larger_doc\nExpected: \n" << docstr << "\n but got \n" << ser_docstr << std::endl;
     }
 }
 
-void test_document_complex() {
+void test_complex_doc() {
     auto docstr =
         "<?xtree version=\"1.0\" ?> "
         "<Tests Id=\"123\"> "
@@ -119,11 +225,11 @@ void test_document_complex() {
     auto ser_docstr = flatten_spacing(document.serialize().c_str());
 
     if (docstr_in != ser_docstr) {
-        std::cerr << "Failed test_document_complex\nExpected: \n" << docstr << "\n but got \n" << ser_docstr << std::endl;
+        std::cerr << "Failed test_complex_doc\nExpected: \n" << docstr << "\n but got \n" << ser_docstr << std::endl;
     }
 }
 
-void test_document_walk() {
+void test_walk_doc() {
     auto docstr =
         "<?xtree version=\"1.0\" ?> "
         "<?xmlmeta?> "
@@ -150,28 +256,7 @@ void test_document_walk() {
     }
 }
 
-void test_document_comments() {
-    auto docstr =
-        "<Tests> "
-        "<!-- This is -a- comment -->"
-        "</Tests> ";
-
-    xtree::Document document(docstr);
-
-    xtree::Document expected;
-
-    auto root = xtree::Elem("Tests");
-    root.add_node(xtree::Node(xtree::Comment("This is -a- comment")));
-
-    expected.add_node(xtree::Node(std::move(root)));
-
-    if (expected != document) {
-        std::cerr << "Failed test_comment_document\nExpected: \n" <<
-                  expected.serialize() << "\n but got \n" << document.serialize() << std::endl;
-    }
-}
-
-void test_document_file(const std::string& file_path) {
+void test_from_file(const std::string& file_path) {
     auto start = std::chrono::steady_clock::now();
 
     std::ifstream file(file_path);
@@ -200,16 +285,20 @@ void test_document_file(const std::string& file_path) {
 }
 
 int main() {
-    test_small_document_commented();
-    test_small_decl_document();
-    test_document_with_formatting();
-    test_document_complex();
-    test_document_walk();
-    test_document_comments();
+    test_comment();
+    test_unopened_tag();
+    test_cdata();
+    test_unclosed();
+    test_unequal_tags();
+    test_decl();
+    test_larger_doc();
+    test_complex_doc();
+    test_walk_doc();
+    test_dashed_comment();
 
-    test_document_file("../input/employee_records.xml");
-    test_document_file("../input/plant_catalog.xml");
-    test_document_file("../input/books_catalog.xml");
-    test_document_file("../input/employee_hierarchy.xml");
-    test_document_file("../input/book_store.xml");
+    test_from_file("../input/employee_records.xml");
+    test_from_file("../input/plant_catalog.xml");
+    test_from_file("../input/books_catalog.xml");
+    test_from_file("../input/employee_hierarchy.xml");
+    test_from_file("../input/book_store.xml");
 }

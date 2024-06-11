@@ -102,9 +102,7 @@ namespace xtree {
     private:
         std::string message;
     public:
-        explicit NodeTypeException(const std::string& m) : message(m) {
-            printf("%s\n", m.c_str());
-        }
+        explicit NodeTypeException(std::string&& m) : message(std::move(m)) {}
 
         [[nodiscard]] const char* what() const noexcept override {
             return message.c_str();
@@ -201,8 +199,7 @@ namespace xtree {
     private:
         std::string message;
     public:
-        explicit TokenException(const std::string& m) : message(m) {
-            printf("%s\n", m.c_str());
+        explicit TokenException(std::string&& m) : message(std::move(m)) {
         }
 
         [[nodiscard]] const char* what() const noexcept override {
