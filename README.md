@@ -35,21 +35,21 @@ ofs << document;
 
 Nodes on the document tree can be accessed or modified using utility functions.
 ```c++
-auto child = document.find_element("Manager")->select_element("Programmer");
-auto value = document.select_element("Employee")->select_attr("name")->get_value();
+auto child = document.find_element("Manager")->select_elem("Programmer");
+auto value = document.select_elem("Employee")->select_attr("name")->get_value();
 
-document.add_node(xtree::Node(xtree::Elem("CEO")));
-document.select_element("CEO")->add_attribute("name", "Joseph");
+document.add_node(xtree::Elem("CEO"));
+document.select_elem("CEO")->add_attr("name", "Joseph");
 ```
 
 ```c++
 xtree::Document expected;
 
-auto decl = xtree::Node(xtree::Decl("xml", {{"version", "1.0"}}));
+auto decl = xtree::Decl("xml", {{"version", "1.0"}});
 
 auto root = xtree::Elem("Dad", {{"name", "Tom"}, {"age", "54"}});
-root.add_node(xtree::Node(xtree::Elem("Son", {{"name", "Joseph"}, {"age", "22"}})));
+root.add_node(xtree::Elem("Son", {{"name", "Joseph"}, {"age", "22"}}));
 
 expected.add_node(std::move(decl));
-expected.add_node(xtree::Node(std::move(root)));
+expected.set_root(std::move(root));
 ```

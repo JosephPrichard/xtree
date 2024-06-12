@@ -2,6 +2,11 @@
 // 4/27/2024
 // Implementation for the xml document parser
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "modernize-use-nodiscard"
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "misc-no-recursion"
+
 #include <iostream>
 #include <memory_resource>
 #include <array>
@@ -80,7 +85,7 @@ struct XmlParser {
         }
     }
 
-    [[nodiscard]] TokenException invalid_symbol(char symbol, const std::string& custom_message) const {
+    TokenException invalid_symbol(char symbol, const std::string& custom_message) const {
         std::string message =
             "encountered invalid symbol in stream: '"
             + std::string(1, symbol) +
@@ -93,7 +98,7 @@ struct XmlParser {
         return TokenException(std::move(message), row, col);
     }
 
-    [[nodiscard]] TokenException unexpected_token(const std::string& actual_tok, const std::string& expected_tok) const {
+    TokenException unexpected_token(const std::string& actual_tok, const std::string& expected_tok) const {
         std::string message =
             "encountered invalid token in stream: "
             + actual_tok +
@@ -106,7 +111,7 @@ struct XmlParser {
         return TokenException(std::move(message), row, col);
     }
 
-    [[nodiscard]] TokenException invalid_token(const std::string& m) const {
+    TokenException invalid_token(const std::string& m) const {
         std::string message =
             m +
             " at row " +
@@ -116,7 +121,7 @@ struct XmlParser {
         return TokenException(std::move(message), row, col);
     }
 
-    [[nodiscard]] TokenException end_of_stream() const {
+    TokenException end_of_stream() const {
         return invalid_token("reached the end of the stream while parsing");
     }
 
@@ -493,7 +498,7 @@ struct XmlParser {
             throw invalid_token("unclosed attributes list in tag");
         }
 
-        return Elem(std::move(tag_name), std::move(attrs), std::move(children));
+        return {std::move(tag_name), std::move(attrs), std::move(children)};
     }
 
     Decl parse_decl() {
@@ -577,7 +582,7 @@ Document::Document(const std::string& docstr) {
     parser.parse(*this);
 }
 
-Elem* Elem::select_element(const std::string& ctag) {
+Elem* Elem::select_elem(const std::string& ctag) {
     for (auto& child: children)
         if (auto elem = get_if<Elem>(&child->data))
             if (elem->tag == ctag)
@@ -590,6 +595,17 @@ Attr* Elem::select_attr(const std::string& attr_name) {
         if (attr.get_name() == attr_name)
             return &attr;
     return nullptr;
+}
+
+void Elem::remove_node(const std::string& rtag) {
+    auto it = children.begin();
+    while (it != children.end()) {
+        if ((*it)->is_elem() && (*it)->as_elem().tag == rtag) {
+            it = children.erase(it);
+        } else {
+            it++;
+        }
+    }
 }
 
 std::ostream& xtree::operator<<(std::ostream& os, const Node& node) {
@@ -658,3 +674,6 @@ std::ostream& xtree::operator<<(std::ostream& os, const RootNode& node) {
     }
     return os;
 }
+
+#pragma clang diagnostic pop
+#pragma clang diagnostic pop

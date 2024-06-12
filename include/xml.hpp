@@ -2,6 +2,9 @@
 // 4/25/2024
 // Xml parsing library for C++
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "modernize-use-nodiscard"
+
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,11 +20,11 @@ namespace xtree {
         std::string name;
         std::string value;
 
-        [[nodiscard]] const std::string& get_name() const {
+        const std::string& get_name() const {
             return name;
         }
 
-        [[nodiscard]] const std::string& get_value() const {
+        const std::string& get_value() const {
             return value;
         }
 
@@ -38,7 +41,7 @@ namespace xtree {
         std::string tag;
         std::vector<Attr> attributes;
 
-        void add_attribute(std::string&& name, std::string&& value) {
+        void add_attr(std::string&& name, std::string&& value) {
             attributes.emplace_back(std::move(name), std::move(value));
         }
 
@@ -78,10 +81,10 @@ namespace xtree {
         std::vector<Attr> attributes;
         std::vector<std::unique_ptr<Node>> children;
 
-        explicit Elem(std::string&& tag): tag(std::move(tag)) {}
+        explicit Elem(std::string&& tag): Elem(std::move(tag), {}, {}) {}
 
         Elem(std::string&& tag, std::vector<Attr>&& attributes)
-            : tag(std::move(tag)), attributes(std::move(attributes)) {}
+            : Elem(Elem(std::move(tag), std::move(attributes), {})) {}
 
         Elem(std::string&& tag, std::vector<Attr>&& attributes, std::vector<std::unique_ptr<Node>>&& children)
             : tag(std::move(tag)), attributes(std::move(attributes)), children(std::move(children)) {}
@@ -96,23 +99,36 @@ namespace xtree {
         }
 
         // ensures that an elem can be moved when possible and not copied
-        Elem(Elem&& _) = default;
+        Elem(Elem&&) = default;
 
-        [[nodiscard]] const std::string& get_tag() const {
+        const std::string& get_tag() const {
             return tag;
         }
 
-        [[nodiscard]] Elem* select_element(const std::string& ctag);
+        Elem* select_elem(const std::string& ctag);
 
-        [[nodiscard]] Attr* select_attr(const std::string& attr_name);
+        Attr* select_attr(const std::string& attr_name);
 
-        void add_attribute(std::string&& name, std::string&& value) {
+        void add_attr(std::string&& name, std::string&& value) {
             attributes.emplace_back(std::move(name), std::move(value));
+        }
+
+        void remove_attr(const std::string& name) {
+            auto it = attributes.begin();
+            while (it != attributes.end()) {
+                if (it->name == name) {
+                    it = attributes.erase(it);
+                } else {
+                    it++;
+                }
+            }
         }
 
         void add_node(NodeVariant&& node) {
             children.emplace_back(std::make_unique<Node>(std::move(node)));
         }
+
+        void remove_node(const std::string& tag);
 
         friend std::ostream& operator<<(std::ostream& os, const Elem& elem);
 
@@ -138,7 +154,7 @@ namespace xtree {
     public:
         explicit NodeTypeException(std::string&& m) : message(std::move(m)) {}
 
-        [[nodiscard]] const char* what() const noexcept override {
+        const char* what() const noexcept override {
             return message.c_str();
         }
     };
@@ -146,45 +162,45 @@ namespace xtree {
     struct Node {
         NodeVariant data;
 
-        [[nodiscard]] bool is_comment() const {
+        bool is_comment() const {
             return holds_alternative<Comment>(data);
         }
 
-        [[nodiscard]] bool is_text() const {
+        bool is_text() const {
             return holds_alternative<Text>(data);
         }
 
-        [[nodiscard]] bool is_elem() const {
+        bool is_elem() const {
             return holds_alternative<Elem>(data);
         }
 
-        [[nodiscard]] Comment& as_comment() {
+        Comment& as_comment() {
             if (auto node = get_if<Comment>(&data))
                 return *node;
             throw NodeTypeException("node is not a comment type node");
         }
 
-        [[nodiscard]] const std::string& as_text() const {
+        const std::string& as_text() const {
             if (auto node = get_if<Text>(&data))
                 return *node;
             throw NodeTypeException("node is not a text type node");
         }
 
-        [[nodiscard]] Elem& as_elem() {
+        Elem& as_elem() {
             if (auto elem = get_if<Elem>(&data))
                 return *elem;
             throw NodeTypeException("node is not an elem type node");
         }
 
-        [[nodiscard]] Elem* find_element(const char* tag) {
+        Elem* find_element(const char* tag) {
             if (auto elem = get_if<Elem>(&data))
-                return elem->select_element(tag);
+                return elem->select_elem(tag);
             return nullptr;
         }
 
         friend std::ostream& operator<<(std::ostream& os, const Node& node);
 
-        [[nodiscard]] std::string serialize() const {
+        std::string serialize() const {
             std::stringstream ss;
             ss << (*this);
             return ss.str();
@@ -198,21 +214,21 @@ namespace xtree {
     struct RootNode {
         RootVariant data;
 
-        [[nodiscard]] bool is_comment() const {
+        bool is_comment() const {
             return std::holds_alternative<Comment>(data);
         }
 
-        [[nodiscard]] bool is_decl() const {
+        bool is_decl() const {
             return std::holds_alternative<Decl>(data);
         }
 
-        [[nodiscard]] Comment& as_comment() {
+        Comment& as_comment() {
             if (auto node = std::get_if<Comment>(&data))
                 return *node;
             throw NodeTypeException("node is not a comment type node");
         }
 
-        [[nodiscard]] const Decl& as_decl() const {
+        const Decl& as_decl() const {
             if (auto node = std::get_if<Decl>(&data))
                 return *node;
             throw NodeTypeException("node is not a decl type node");
@@ -220,7 +236,7 @@ namespace xtree {
 
         friend std::ostream& operator<<(std::ostream& os, const RootNode& node);
 
-        [[nodiscard]] std::string serialize() const {
+        std::string serialize() const {
             std::stringstream ss;
             ss << (*this);
             return ss.str();
@@ -239,7 +255,7 @@ namespace xtree {
 
         explicit Document(const std::string& docstr);
 
-        [[nodiscard]] Decl* select_decl(const std::string& tag) {
+        Decl* select_decl(const std::string& tag) {
             for (auto& child: children)
                 if (auto decl = get_if<Decl>(&child->data))
                     if (decl->tag == tag)
@@ -247,19 +263,30 @@ namespace xtree {
             return nullptr;
         }
 
+        void remove_decl(const std::string& rtag) {
+            auto it = children.begin();
+            while (it != children.end()) {
+                if ((*it)->is_decl() && (*it)->as_decl().tag == rtag) {
+                    it = children.erase(it);
+                } else {
+                    it++;
+                }
+            }
+        }
+
         void add_node(RootVariant&& node) {
             children.emplace_back(std::make_unique<RootNode>(std::move(node)));
         }
 
-        [[nodiscard]] Elem& get_root() const {
-            return *root;
+        std::unique_ptr<Elem>& get_root() {
+            return root;
         }
 
         void set_root(Elem&& elem) {
             root = std::make_unique<Elem>(std::move(elem));
         }
 
-        [[nodiscard]] std::string serialize() const {
+        std::string serialize() const {
             std::stringstream ss;
             ss << (*this);
             return ss.str();
@@ -287,23 +314,18 @@ namespace xtree {
     class TokenException : public std::exception {
     private:
         std::string message;
+    public:
         int row;
         int col;
-    public:
+
         explicit TokenException(std::string&& m, int row, int col) : message(std::move(m)), row(row), col(col) {
         }
 
-        [[nodiscard]] int get_row() const {
-            return row;
-        }
-
-        [[nodiscard]] int get_col() const {
-            return col;
-        }
-
-        [[nodiscard]] const char* what() const noexcept override {
+        const char* what() const noexcept override {
             return message.c_str();
         }
     };
 
 }
+
+#pragma clang diagnostic pop

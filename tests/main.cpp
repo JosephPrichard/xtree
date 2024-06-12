@@ -186,7 +186,34 @@ void test_decl() {
     }
 }
 
-std::string flatten_spacing(const char* str) {
+void test_remove() {
+    xtree::Document document;
+    auto decl = xtree::Decl("xml", {{"version", "1.0"}});
+    auto root = xtree::Elem("Test", {{"TestId",   "0001"},
+                                     {"TestType", "CMD"}});
+    root.add_node(xtree::Elem("Name1"));
+    root.add_node(xtree::Elem("Name"));
+    document.add_node(std::move(decl));
+    document.set_root(std::move(root));
+
+    document.remove_decl("xml");
+    document.get_root()->remove_node("Name");
+    document.get_root()->remove_attr("TestId");
+
+    auto docstr = document.serialize();
+
+    auto expected =
+        "<Test TestType=\"CMD\"> "
+        "<Name1> </Name1> "
+        "</Test> ";
+
+    if (docstr != expected) {
+        std::cerr << "Failed test_decl\nExpected: \n" << expected <<
+                  "\n but got \n" << docstr << "\n" << std::endl;
+    }
+}
+
+std::string flatten_spacing(const std::string& str) {
     std::string new_str;
     for (int i = 0; str[i] != 0; i++) {
         char c = str[i];
@@ -215,7 +242,7 @@ void test_larger_doc() {
 
     xtree::Document document(docstr);
 
-    auto ser_docstr = flatten_spacing(document.serialize().c_str());
+    auto ser_docstr = flatten_spacing(document.serialize());
 
     if (docstr_in != ser_docstr) {
         std::cerr << "Failed test_larger_doc\nExpected: \n" << docstr << "\n but got \n" << ser_docstr << "\n" << std::endl;
@@ -244,7 +271,7 @@ void test_complex_doc() {
 
     xtree::Document document(docstr);
 
-    auto ser_docstr = flatten_spacing(document.serialize().c_str());
+    auto ser_docstr = flatten_spacing(document.serialize());
 
     if (docstr_in != ser_docstr) {
         std::cerr << "Failed test_complex_doc\nExpected: \n" << docstr << "\n but got \n" << ser_docstr << "\n" << std::endl;
@@ -267,17 +294,17 @@ void test_walk_doc() {
 
     xtree::Document document(docstr);
 
-    auto attr_value = document.get_root().select_attr("Id")->get_value();
+    auto attr_value = document.get_root()->select_attr("Id")->get_value();
     if (attr_value != "123") {
         std::cerr << "Expected '123' for attr but got " << attr_value << std::endl;
     }
 
-    auto tag = document.get_root().select_element("Test")->get_tag();
+    auto tag = document.get_root()->select_elem("Test")->get_tag();
     if (tag != "Test") {
         std::cerr << "Expected 'Test' for tag but got " << attr_value << std::endl;
     }
 
-    auto attr2 = document.get_root().select_attr("Nope");
+    auto attr2 = document.get_root()->select_attr("Nope");
     if (attr2 != nullptr) {
         std::cerr << "Expected nullptr for attr but got " << attr_value << std::endl;
     }
@@ -324,6 +351,7 @@ int main() {
     test_walk_doc();
     test_dashed_comment();
     test_copy_tree();
+    test_remove();
 
     test_from_file("../input/employee_records.xml");
     test_from_file("../input/plant_catalog.xml");
