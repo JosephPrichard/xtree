@@ -1,5 +1,5 @@
 # XTree
-A C++20 library for the hierarchical tree based serialization format called XML.
+An idiomatic C++20 library for the hierarchical tree based serialization format called XML.
 
 XTree uses the recursive descent algorithm to parse a set of mutually recursive structures
 into DOM-like tree structure. The tree structure enforces ownership using `std::unique_ptr` from parent

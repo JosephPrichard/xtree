@@ -90,7 +90,7 @@ struct XmlParser {
             + std::to_string(row) +
             " at col "
             + std::to_string(col);
-        return TokenException(std::move(message));
+        return TokenException(std::move(message), row, col);
     }
 
     [[nodiscard]] TokenException unexpected_token(const std::string& actual_tok, const std::string& expected_tok) const {
@@ -103,7 +103,7 @@ struct XmlParser {
             std::to_string(row) +
             " at col " +
             std::to_string(col);
-        return TokenException(std::move(message));
+        return TokenException(std::move(message), row, col);
     }
 
     [[nodiscard]] TokenException invalid_token(const std::string& m) const {
@@ -113,7 +113,7 @@ struct XmlParser {
             std::to_string(row) +
             " at col " +
             std::to_string(col);
-        return TokenException(std::move(message));
+        return TokenException(std::move(message), row, col);
     }
 
     [[nodiscard]] TokenException end_of_stream() const {
@@ -425,7 +425,7 @@ struct XmlParser {
             else if (tok == OPEN_END_TOK) {
                 auto etag_name = read_tagname();
                 if (etag_name != tag_name)
-                    throw unexpected_token(std::string(etag_name), "closing tag '" + std::string(tag_name) + "'");
+                    throw unexpected_token(etag_name, "closing tag '" + tag_name + "'");
 
                 auto tok1 = read_close_tok();
                 if (tok1 == NO_TOK) {
@@ -437,11 +437,11 @@ struct XmlParser {
                 return;
             }
             else if (tok == OPEN_CMT_TOK) {
-                auto node = parse_comment();
+                auto node = std::make_unique<Node>(parse_comment());
                 children.emplace_back(std::move(node));
             }
             else if (tok == OPEN_BEGIN_TOK) {
-                auto node = parse_elem();
+                auto node = std::make_unique<Node>(parse_elem());
                 children.emplace_back(std::move(node));
             }
             else if (tok == TEXT_TOK) {
@@ -457,7 +457,7 @@ struct XmlParser {
         throw end_of_stream();
     }
 
-    std::unique_ptr<Node> parse_comment() {
+    Comment parse_comment() {
         skip_spaces();
 
         std::string com_text;
@@ -470,7 +470,7 @@ struct XmlParser {
                 }
                 else if (tok == CLOSE_CMT_TOK) {
                     trim_spaces(com_text);
-                    return std::make_unique<Node>(Comment(std::move(com_text)));
+                    return Comment(std::move(com_text));
                 }
             }
             com_text += read();
@@ -479,7 +479,7 @@ struct XmlParser {
         throw end_of_stream();
     }
 
-    std::unique_ptr<Node> parse_elem() {
+    Elem parse_elem() {
         auto tag_name = read_tagname();
 
         std::vector<Attr> attrs;
@@ -493,10 +493,10 @@ struct XmlParser {
             throw invalid_token("unclosed attributes list in tag");
         }
 
-        return std::make_unique<Node>(Elem(std::move(tag_name), std::move(attrs), std::move(children)));
+        return Elem(std::move(tag_name), std::move(attrs), std::move(children));
     }
 
-    std::unique_ptr<Node> parse_decl() {
+    Decl parse_decl() {
         auto tag_name = read_tagname();
 
         std::vector<Attr> attrs;
@@ -506,7 +506,7 @@ struct XmlParser {
             throw unexpected_token(token_string(tok), "?>");
         }
 
-        return std::make_unique<Node>(Decl(std::move(tag_name), std::move(attrs)));
+        return Decl(std::move(tag_name), std::move(attrs));
     }
 
     int parse_attrs(std::vector<Attr>& attrs) {
@@ -542,19 +542,28 @@ struct XmlParser {
         throw end_of_stream();
     }
 
-    void parse(std::vector<std::unique_ptr<Node>>& root_children) {
+    void parse(Document& document) {
+        bool parsed_root = false;
         while (has_next()) {
             auto tok = read_open_tok();
             if (tok == NO_TOK) {
                 return;
             }
             if (tok == OPEN_BEGIN_TOK) {
-                auto node = parse_elem();
-                root_children.push_back(std::move(node));
+                if (!parsed_root) {
+                    document.set_root(parse_elem());
+                    parsed_root = true;
+                } else {
+                    throw invalid_token("expected an xml document to only have a single root node");
+                }
             }
             else if (tok == OPEN_DECL_TOK) {
-                auto node = parse_decl();
-                root_children.push_back(std::move(node));
+                auto node = std::make_unique<RootNode>(parse_decl());
+                document.children.emplace_back(std::move(node));
+            }
+            else if (tok == OPEN_CMT_TOK) {
+                auto node = std::make_unique<RootNode>(parse_comment());
+                document.children.emplace_back(std::move(node));
             }
             else {
                 throw unexpected_token(token_string(tok), "'</' or '<?'");
@@ -563,51 +572,9 @@ struct XmlParser {
     }
 };
 
-std::ostream& xtree::operator<<(std::ostream& os, const Node& node) {
-    if (auto elem = std::get_if<Elem>(&node.data)) {
-        os << "<" << elem->tag;
-        for (int i = 0; i < elem->attributes.size(); i++) {
-            if (i == 0)
-                os << " ";
-
-            auto& attr = elem->attributes[i];
-            os << attr.name << "=" << "\"" << attr.value << "\"";
-
-            if (i < elem->attributes.size() - 1)
-                os << " ";
-        }
-        os << "> ";
-        for (auto& child: elem->children) {
-            os << child->serialize();
-        }
-        os << "</" << elem->tag << "> ";
-    }
-    else if (auto text = std::get_if<Text>(&node.data)) {
-        os << *text;
-    }
-    else if (auto decl = std::get_if<Decl>(&node.data)) {
-        os << "<?" << decl->tag;
-        for (int i = 0; i < decl->attributes.size(); i++) {
-            if (i == 0)
-                os << " ";
-
-            auto& attr = decl->attributes[i];
-            os << attr.name << "=" << "\"" << attr.value << "\" ";
-
-            if (i < decl->attributes.size() - 1)
-                os << " ";
-        }
-        os << "?> ";
-    }
-    else if (auto comment = std::get_if<Comment>(&node.data)) {
-        os << "<!-- " << comment->text << " -->";
-    }
-    return os;
-}
-
 Document::Document(const std::string& docstr) {
     XmlParser parser(docstr);
-    parser.parse(children);
+    parser.parse(*this);
 }
 
 Elem* Elem::select_element(const std::string& ctag) {
@@ -623,4 +590,71 @@ Attr* Elem::select_attr(const std::string& attr_name) {
         if (attr.get_name() == attr_name)
             return &attr;
     return nullptr;
+}
+
+std::ostream& xtree::operator<<(std::ostream& os, const Node& node) {
+    if (auto elem = std::get_if<Elem>(&node.data)) {
+        os << *elem;
+    }
+    else if (auto text = std::get_if<Text>(&node.data)) {
+        os << *text;
+    }
+    else if (auto comment = std::get_if<Comment>(&node.data)) {
+        os << *comment;
+    }
+    return os;
+}
+
+std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
+    os << "<" << elem.tag;
+    for (int i = 0; i < elem.attributes.size(); i++) {
+        if (i == 0)
+            os << " ";
+
+        os << elem.attributes[i];
+
+        if (i < elem.attributes.size() - 1)
+            os << " ";
+    }
+    os << "> ";
+    for (auto& child: elem.children) {
+        os << child->serialize();
+    }
+    os << "</" << elem.tag << "> ";
+    return os;
+}
+
+std::ostream& xtree::operator<<(std::ostream& os, const Attr& attr) {
+    os << attr.name << "=" << "\"" << attr.value << "\"";
+    return os;
+}
+
+std::ostream& xtree::operator<<(std::ostream& os, const Decl& decl) {
+    os << "<?" << decl.tag;
+    for (int i = 0; i < decl.attributes.size(); i++) {
+        if (i == 0)
+            os << " ";
+
+        os << decl.attributes[i];
+
+        if (i < decl.attributes.size() - 1)
+            os << " ";
+    }
+    os << "?> ";
+    return os;
+}
+
+std::ostream& xtree::operator<<(std::ostream& os, const Comment& comment) {
+    os << "<!-- " << comment.text << " -->";
+    return os;
+}
+
+std::ostream& xtree::operator<<(std::ostream& os, const RootNode& node) {
+    if (auto text = std::get_if<Decl>(&node.data)) {
+        os << *text;
+    }
+    else if (auto decl = std::get_if<Comment>(&node.data)) {
+        os << *decl;
+    }
+    return os;
 }
