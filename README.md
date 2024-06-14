@@ -39,7 +39,7 @@ auto child = document.find_element("Manager")->select_elem("Programmer");
 auto value = document.select_elem("Employee")->select_attr("name")->get_value();
 
 document.add_node(xtree::Elem("CEO"));
-document.select_elem("CEO")->add_attr("name", "Joseph");
+document.select_elem("CEO")->add_attribute("name", "Joseph");
 ```
 
 ```c++

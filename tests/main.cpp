@@ -339,6 +339,8 @@ void test_from_file(const std::string& file_path) {
 }
 
 int main() {
+    xtree::Document::RECURSIVE_PARSER = false;
+
     test_comment();
     test_unopened_tag();
     test_cdata();

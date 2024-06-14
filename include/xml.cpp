@@ -4,8 +4,6 @@
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "modernize-use-nodiscard"
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "misc-no-recursion"
 
 #include <iostream>
 #include <memory_resource>
@@ -13,6 +11,8 @@
 #include "xml.hpp"
 
 using namespace xtree;
+
+bool Document::RECURSIVE_PARSER = true;
 
 struct XmlParser {
     const std::string& text;
@@ -224,9 +224,7 @@ struct XmlParser {
         return is_name_start_char(c) || isdigit(c) || c == '-' || c == '.';
     }
 
-    std::string read_tagname() {
-        std::string str;
-
+    void read_tagname(std::string& str) {
         int i = 0;
         while (has_next()) {
             char c = peek();
@@ -242,17 +240,15 @@ struct XmlParser {
             }
             i += 1;
         }
-        return str;
     }
 
-    std::string read_attrvalue() {
+    void read_attrvalue(std::string& str) {
         char open_char = read();
         if (open_char != '"' && open_char != '\'') {
             throw invalid_symbol(open_char, "attr value must begin with single or double quotes");
         }
         char close_char = open_char;
 
-        std::string str;
         while (has_next()) {
             char c = peek();
             if (c == '&') {
@@ -267,11 +263,9 @@ struct XmlParser {
                 str += c;
             }
         }
-        return str;
     }
 
-    std::string read_attrname() {
-        std::string str;
+    void read_attrname(std::string& str) {
         while (has_next()) {
             char c = peek();
             if (!is_name_char(c)) {
@@ -280,7 +274,6 @@ struct XmlParser {
             str += c;
             read();
         }
-        return str;
     }
 
     static constexpr int OPEN_CMT_TOK = 0;
@@ -420,6 +413,39 @@ struct XmlParser {
         }
     }
 
+    int parse_attrs(std::vector<Attr>& attrs) {
+        while (has_next()) {
+            Attr attr;
+
+            auto tok = read_close_tok();
+            if (tok == NO_TOK) {
+                throw end_of_stream();
+            }
+            else if (tok == CLOSE_END_TOK || tok == CLOSE_BEGIN_TOK || tok == CLOSE_DECL_TOK) {
+                return tok;
+            }
+            else if (tok == TEXT_TOK) {
+                read_attrname(attr.name);
+            }
+            else {
+                throw unexpected_token(token_string(tok), "attrname, '>', or '/>'");
+            }
+
+            if (!has_next()) {
+                throw end_of_stream();
+            }
+            char c = read();
+            if (c != '=') {
+                throw unexpected_token(std::string(1, c), "'='");
+            }
+
+            read_attrvalue(attr.value);
+            attrs.emplace_back(std::move(attr));
+        }
+
+        throw end_of_stream();
+    }
+
     void parse_children(const std::string& tag_name, std::vector<std::unique_ptr<Node>>& children) {
         while (has_next()) {
             auto tok = read_open_tok();
@@ -428,9 +454,12 @@ struct XmlParser {
                 throw end_of_stream();
             }
             else if (tok == OPEN_END_TOK) {
-                auto etag_name = read_tagname();
-                if (etag_name != tag_name)
+                std::string etag_name;
+                read_tagname(etag_name);
+
+                if (etag_name != tag_name) {
                     throw unexpected_token(etag_name, "closing tag '" + tag_name + "'");
+                }
 
                 auto tok1 = read_close_tok();
                 if (tok1 == NO_TOK) {
@@ -450,8 +479,7 @@ struct XmlParser {
                 children.emplace_back(std::move(node));
             }
             else if (tok == TEXT_TOK) {
-                auto raw_text = read_rawtext();
-                auto node = std::make_unique<Node>(std::move(raw_text));
+                auto node = std::make_unique<Node>(read_rawtext());
                 children.emplace_back(std::move(node));
             }
             else {
@@ -460,6 +488,106 @@ struct XmlParser {
         }
 
         throw end_of_stream();
+    }
+
+    Elem parse_elem() {
+        Elem elem;
+
+        read_tagname(elem.tag);
+        auto close_tok = parse_attrs(elem.attributes);
+
+        if (close_tok == CLOSE_END_TOK) {
+            parse_children(elem.tag, elem.children);
+        }
+        else if (close_tok != CLOSE_BEGIN_TOK) {
+            throw invalid_token("unclosed attributes list in tag");
+        }
+
+        return elem;
+    }
+
+    Elem parse_elem_iter() {
+        std::vector<Elem*> stack;
+
+        // start by parsing the root elem node
+        Elem root;
+
+        read_tagname(root.tag);
+        auto close_tok = parse_attrs(root.attributes);
+
+        if (close_tok == CLOSE_END_TOK) {
+            stack.emplace_back(&root);
+        }
+        else if (close_tok == CLOSE_BEGIN_TOK) {
+            // the root has no children
+            return root;
+        } else {
+            throw invalid_token("unclosed attributes list in tag");
+        }
+
+        // "state machine" to parse until the stack is empty using tokens to decide when to push/pop
+        while (!stack.empty()) {
+            if (!has_next()) {
+                throw end_of_stream();
+            }
+            auto top = stack.back();
+
+            auto tok = read_open_tok();
+
+            if (tok == NO_TOK) {
+                throw end_of_stream();
+            }
+            else if (tok == OPEN_END_TOK) {
+                std::string etag_name;
+                read_tagname(etag_name);
+
+                if (etag_name != top->tag) {
+                    throw unexpected_token(etag_name, "closing tag '" + top->tag + "'");
+                }
+
+                auto tok1 = read_close_tok();
+                if (tok1 == NO_TOK) {
+                    throw end_of_stream();
+                }
+                if (tok1 != CLOSE_END_TOK) {
+                    throw unexpected_token(token_string(tok1), "'>'");
+                }
+
+                // reaching the end of this node means we back track
+                stack.pop_back();
+            } else if (tok == OPEN_CMT_TOK) {
+                auto node = std::make_unique<Node>(parse_comment());
+                top->children.emplace_back(std::move(node));
+            }
+            else if (tok == OPEN_BEGIN_TOK) {
+                // read the next element to be processed by the parser
+                auto node = std::make_unique<Node>(Elem());
+                auto elem = &node.get()->as_elem();
+
+                read_tagname(elem->tag);
+                close_tok = parse_attrs(elem->attributes);
+
+                if (close_tok == CLOSE_END_TOK) {
+                    // this will be the next node we parse
+                    stack.emplace_back(elem);
+                }
+                else if (close_tok != CLOSE_BEGIN_TOK) { // CL0SE_BEGIN_TOK means the node has no children
+                    throw invalid_token("unclosed attributes list in tag");
+                }
+
+                top->children.emplace_back(std::move(node));
+            }
+            else if (tok == TEXT_TOK) {
+                auto raw_text = read_rawtext();
+                auto node = std::make_unique<Node>(std::move(raw_text));
+                top->children.emplace_back(std::move(node));
+            }
+            else {
+                throw unexpected_token(token_string(tok), "'</', '<!--', '<', <rawtext>");
+            }
+        }
+
+        return root;
     }
 
     Comment parse_comment() {
@@ -484,71 +612,22 @@ struct XmlParser {
         throw end_of_stream();
     }
 
-    Elem parse_elem() {
-        auto tag_name = read_tagname();
-
-        std::vector<Attr> attrs;
-        auto close_tok = parse_attrs(attrs);
-
-        std::vector<std::unique_ptr<Node>> children;
-        if (close_tok == CLOSE_END_TOK) {
-            parse_children(tag_name, children);
-        }
-        else if (close_tok != CLOSE_BEGIN_TOK) {
-            throw invalid_token("unclosed attributes list in tag");
-        }
-
-        return {std::move(tag_name), std::move(attrs), std::move(children)};
-    }
-
     Decl parse_decl() {
-        auto tag_name = read_tagname();
+        Decl decl;
 
-        std::vector<Attr> attrs;
-        auto tok = parse_attrs(attrs);
+        read_tagname(decl.tag);
+        auto tok = parse_attrs(decl.attributes);
 
         if (tok != CLOSE_DECL_TOK) {
             throw unexpected_token(token_string(tok), "?>");
         }
 
-        return Decl(std::move(tag_name), std::move(attrs));
-    }
-
-    int parse_attrs(std::vector<Attr>& attrs) {
-        while (has_next()) {
-            Attr attr;
-
-            auto tok = read_close_tok();
-            if (tok == NO_TOK) {
-                throw end_of_stream();
-            }
-            else if (tok == CLOSE_END_TOK || tok == CLOSE_BEGIN_TOK || tok == CLOSE_DECL_TOK) {
-                return tok;
-            }
-            else if (tok == TEXT_TOK) {
-                attr.name = read_attrname();
-            }
-            else {
-                throw unexpected_token(token_string(tok), "attrname, '>', or '/>'");
-            }
-
-            if (!has_next()) {
-                throw end_of_stream();
-            }
-            char c = read();
-            if (c != '=') {
-                throw unexpected_token(std::string(1, c), "'='");
-            }
-
-            attr.value = read_attrvalue();
-            attrs.emplace_back(std::move(attr));
-        }
-
-        throw end_of_stream();
+        return decl;
     }
 
     void parse(Document& document) {
         bool parsed_root = false;
+
         while (has_next()) {
             auto tok = read_open_tok();
             if (tok == NO_TOK) {
@@ -556,7 +635,11 @@ struct XmlParser {
             }
             if (tok == OPEN_BEGIN_TOK) {
                 if (!parsed_root) {
-                    document.set_root(parse_elem());
+                    if (Document::RECURSIVE_PARSER) {
+                        document.set_root(parse_elem());
+                    } else {
+                        document.set_root(parse_elem_iter());
+                    }
                     parsed_root = true;
                 } else {
                     throw invalid_token("expected an xml document to only have a single root node");
@@ -634,7 +717,7 @@ std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
     }
     os << "> ";
     for (auto& child: elem.children) {
-        os << child->serialize();
+        os << *child;
     }
     os << "</" << elem.tag << "> ";
     return os;
@@ -675,5 +758,4 @@ std::ostream& xtree::operator<<(std::ostream& os, const RootNode& node) {
     return os;
 }
 
-#pragma clang diagnostic pop
 #pragma clang diagnostic pop

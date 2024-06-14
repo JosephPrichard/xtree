@@ -15,7 +15,6 @@
 #include <cstring>
 
 namespace xtree {
-
     struct Attr {
         std::string name;
         std::string value;
@@ -41,7 +40,7 @@ namespace xtree {
         std::string tag;
         std::vector<Attr> attributes;
 
-        void add_attr(std::string&& name, std::string&& value) {
+        void add_attribute(std::string&& name, std::string&& value) {
             attributes.emplace_back(std::move(name), std::move(value));
         }
 
@@ -81,6 +80,8 @@ namespace xtree {
         std::vector<Attr> attributes;
         std::vector<std::unique_ptr<Node>> children;
 
+        Elem() = default;
+
         explicit Elem(std::string&& tag): Elem(std::move(tag), {}, {}) {}
 
         Elem(std::string&& tag, std::vector<Attr>&& attributes)
@@ -98,7 +99,6 @@ namespace xtree {
             }
         }
 
-        // ensures that an elem can be moved when possible and not copied
         Elem(Elem&&) = default;
 
         const std::string& get_tag() const {
@@ -254,6 +254,8 @@ namespace xtree {
         Document() = default;
 
         explicit Document(const std::string& docstr);
+
+        static bool RECURSIVE_PARSER;
 
         Decl* select_decl(const std::string& tag) {
             for (auto& child: children)
