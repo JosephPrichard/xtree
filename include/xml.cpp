@@ -506,7 +506,7 @@ struct XmlParser {
         return elem;
     }
 
-    Elem parse_elem_iter() {
+    Elem parse_elem_tree() {
         std::vector<Elem*> stack;
 
         // start by parsing the root elem node
@@ -525,7 +525,7 @@ struct XmlParser {
             throw invalid_token("unclosed attributes list in tag");
         }
 
-        // "state machine" to parse until the stack is empty using tokens to decide when to push/pop
+        //  parse until the stack is empty using tokens to decide when to push/pop
         while (!stack.empty()) {
             if (!has_next()) {
                 throw end_of_stream();
@@ -593,7 +593,8 @@ struct XmlParser {
     Comment parse_comment() {
         skip_spaces();
 
-        std::string com_text;
+        Comment comment;
+
         while (has_next()) {
             char c = peek();
             if (c == '-') {
@@ -602,11 +603,11 @@ struct XmlParser {
                     throw end_of_stream();
                 }
                 else if (tok == CLOSE_CMT_TOK) {
-                    trim_spaces(com_text);
-                    return Comment(std::move(com_text));
+                    trim_spaces(comment.text);
+                    return comment;
                 }
             }
-            com_text += read();
+            comment.text += read();
         }
 
         throw end_of_stream();
@@ -638,7 +639,7 @@ struct XmlParser {
                     if (Document::RECURSIVE_PARSER) {
                         document.set_root(parse_elem());
                     } else {
-                        document.set_root(parse_elem_iter());
+                        document.set_root(parse_elem_tree());
                     }
                     parsed_root = true;
                 } else {

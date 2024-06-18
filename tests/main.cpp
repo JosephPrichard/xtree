@@ -308,6 +308,10 @@ void test_walk_doc() {
     if (attr2 != nullptr) {
         std::cerr << "Expected nullptr for attr but got " << attr_value << std::endl;
     }
+
+    for (auto& child : document) {
+
+    }
 }
 
 void test_from_file(const std::string& file_path) {

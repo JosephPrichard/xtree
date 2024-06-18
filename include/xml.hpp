@@ -54,10 +54,6 @@ namespace xtree {
     struct Comment {
         std::string text;
 
-        Comment(const Comment& other) = default;
-
-        explicit Comment(std::string text) : text(std::move(text)) {}
-
         friend std::ostream& operator<<(std::ostream& os, const Comment& comment);
 
         friend bool operator==(const Comment& comment, const Comment& other) {
@@ -82,15 +78,23 @@ namespace xtree {
 
         Elem() = default;
 
-        explicit Elem(std::string&& tag): Elem(std::move(tag), {}, {}) {}
+        explicit Elem(std::string&& tag) noexcept : Elem(std::move(tag), {}, {}) {}
 
-        Elem(std::string&& tag, std::vector<Attr>&& attributes)
+        Elem(std::string&& tag, std::vector<Attr>&& attributes) noexcept
             : Elem(Elem(std::move(tag), std::move(attributes), {})) {}
 
-        Elem(std::string&& tag, std::vector<Attr>&& attributes, std::vector<std::unique_ptr<Node>>&& children)
+        Elem(std::string&& tag, std::vector<Attr>&& attributes, std::vector<std::unique_ptr<Node>>&& children) noexcept
             : tag(std::move(tag)), attributes(std::move(attributes)), children(std::move(children)) {}
 
-        Elem(const Elem& other) {
+        std::vector<std::unique_ptr<Node>>::iterator begin() {
+            return children.begin();
+        }
+
+        std::vector<std::unique_ptr<Node>>::iterator end() {
+            return children.end();
+        }
+
+        Elem(const Elem& other) noexcept {
             tag = other.tag;
             attributes = other.attributes;
             children.clear();
@@ -148,10 +152,9 @@ namespace xtree {
         }
     };
 
-    class NodeTypeException : public std::exception {
-    private:
+    struct NodeTypeException : public std::exception {
         std::string message;
-    public:
+
         explicit NodeTypeException(std::string&& m) : message(std::move(m)) {}
 
         const char* what() const noexcept override {
@@ -276,6 +279,14 @@ namespace xtree {
             }
         }
 
+        std::vector<std::unique_ptr<RootNode>>::iterator begin() {
+            return children.begin();
+        }
+
+        std::vector<std::unique_ptr<RootNode>>::iterator end() {
+            return children.end();
+        }
+
         void add_node(RootVariant&& node) {
             children.emplace_back(std::make_unique<RootNode>(std::move(node)));
         }
@@ -313,10 +324,8 @@ namespace xtree {
         }
     };
 
-    class TokenException : public std::exception {
-    private:
+    struct TokenException : public std::exception {
         std::string message;
-    public:
         int row;
         int col;
 
