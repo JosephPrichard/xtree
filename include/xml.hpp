@@ -271,6 +271,10 @@ namespace xtree {
             return std::holds_alternative<Decl>(data);
         }
 
+        bool is_dtd() const {
+            return std::holds_alternative<DocType>(data);
+        }
+
         Comment& as_comment() {
             if (auto node = std::get_if<Comment>(&data))
                 return *node;
@@ -279,6 +283,12 @@ namespace xtree {
 
         Decl& as_decl() {
             if (auto node = std::get_if<Decl>(&data))
+                return *node;
+            throw NodeTypeException("node is not a decl type node");
+        }
+
+        DocType& as_dtd() {
+            if (auto node = std::get_if<DocType>(&data))
                 return *node;
             throw NodeTypeException("node is not a decl type node");
         }

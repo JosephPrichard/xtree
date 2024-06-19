@@ -53,11 +53,27 @@ root.add_node(xtree::Elem("Son", {{"name", "Joseph"}, {"age", "22"}}));
 document.add_node(std::move(decl));
 document.set_root(std::move(root));
 ```
-Or iterated over.
+Child nodes of elements and documents can be iterated over.
 ```c++
 xtree::Document document;
 
-for (auto& child : *document.get_root()) {
-    
+for (std::unique_ptr<xtree::RootNode>& child : document) {
+    if (child->is_decl()) {
+        std::cout << child->as_decl().tag << std::endl;
+    } else if (child->is_comment()) {
+        std::cout << child->as_comment().text << std::endl;
+    } else {
+        std::cout << child->as_dtd().text << std::endl;
+    }
+}
+
+for (std::unique_ptr<xtree::Node>& child : *document.get_root()) {
+    if (child->is_elem()) {
+        std::cout << child->as_elem().tag << std::endl;
+    } else if (child->is_text()) {
+        std::cout << child->as_text() << std::endl;
+    } else {
+        std::cout << child->as_comment().text << std::endl;
+    }
 }
 ```
