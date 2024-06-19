@@ -69,6 +69,25 @@ void test_unopened_tag() {
     }
 }
 
+void test_dtd() {
+    auto docstr =
+        "<!DOCTYPE hello testing123 hello  >"
+        "<Test>"
+        "</Test>";
+
+    xtree::Document document(docstr);
+
+    xtree::Document expected;
+    expected.add_node(xtree::DocType("hello testing123 hello"));
+    auto root = xtree::Elem("Test");
+    expected.set_root(std::move(root));
+
+    if (expected != document) {
+        std::cerr << "Failed test_small_document\nExpected: \n" << expected.serialize() <<
+                  "\n but got \n" << document.serialize() << "\n" << std::endl;
+    }
+}
+
 void test_cdata() {
     auto docstr =
         "<Test TestId=\"0001\" TestType=\"CMD\">"
@@ -309,9 +328,76 @@ void test_walk_doc() {
         std::cerr << "Expected nullptr for attr but got " << attr_value << std::endl;
     }
 
-    for (auto& child : document) {
-
+    std::vector tags = {"xml", "xmlmeta"};
+    int i = 0;
+    for (auto& child: document) {
+        if (!child->is_decl()) {
+            std::cerr << "Expected nodes should be decl nodes" << std::endl;
+        }
+        if (child->as_decl().tag != tags[i]) {
+            std::cerr << "Expected " << tags[i] << "for decl tag but got " << child->as_decl().tag << std::endl;
+        }
+        i++;
     }
+}
+
+void test_walk_doc_root() {
+    auto docstr =
+        "<?xml version=\"1.0\"?> "
+        "<?xmlmeta?> "
+        "<Tests Id=\"123\"> "
+        "<Test TestId=\"0001\" TestType=\"CMD\"> "
+        "<xsd:Test TestId=\"0001\" TestType=\"CMD\"> "
+        "The Internal Text"
+        "</xsd:Test> "
+        "</Test> "
+        "</Tests> ";
+
+    xtree::Document document(docstr);
+
+    std::vector tags = {"Test", "xsd:Test"};
+    int i = 0;
+    for (auto& child: *document.get_root()) {
+        if (!child->is_elem()) {
+            std::cerr << "Expected nodes should be elem nodes" << std::endl;
+        }
+        if (child->as_elem().tag != tags[i]) {
+            std::cerr << "Expected " << tags[i] << "for elem tag but got " << child->as_elem().tag << std::endl;
+        }
+        i++;
+    }
+}
+
+void test_walk_tree() {
+    struct TestWalker : xtree::DocumentWalker {
+        std::vector<std::string> elem_tags = {"Test", "Name"};
+        int ecnt = 0;
+
+        void on_elem(xtree::Elem& elem) override {
+            auto& etag = elem_tags[ecnt++];
+            if (elem.tag != etag) {
+                std::cerr << "Expected " << etag << "for elem tag but got " << elem.tag << std::endl;
+            }
+        }
+
+        void on_decl(xtree::Decl& decl) override {
+            if (decl.tag != "xml") {
+                std::cerr << "Expected xml for decl tag but got " << decl.tag << std::endl;
+            }
+        }
+
+        void on_text(xtree::Text& text) override {
+            if (text != "Testing Text") {
+                std::cerr << "Expected Testing Text for text but got " << text << std::endl;
+            }
+        }
+    };
+
+    auto docstr = "<?xml ?> <Test> <Name/> Testing Text </Test>";
+    xtree::Document document(docstr);
+
+    TestWalker walker;
+    walker.walk_document(document);
 }
 
 void test_from_file(const std::string& file_path) {
@@ -354,10 +440,13 @@ int main() {
     test_decl();
     test_larger_doc();
     test_complex_doc();
-    test_walk_doc();
     test_dashed_comment();
     test_copy_tree();
     test_remove();
+    test_walk_doc();
+    test_walk_doc_root();
+    test_walk_tree();
+    test_dtd();
 
     test_from_file("../input/employee_records.xml");
     test_from_file("../input/plant_catalog.xml");

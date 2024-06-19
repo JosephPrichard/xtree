@@ -3,7 +3,7 @@ An idiomatic C++20 library for the hierarchical tree based serialization format 
 
 XTree uses the recursive descent algorithm to parse a set of mutually recursive structures
 into DOM-like tree structure. The tree structure enforces ownership using `std::unique_ptr` from parent
-to child nodes. XTree currently only supports ASCII xml documents.
+to child nodes. XTree parses but does not validate DTD nodes. Only ASCII xml documents are supported.
 
 An example XML file:
 ```
@@ -43,13 +43,21 @@ document.select_elem("CEO")->add_attribute("name", "Joseph");
 ```
 
 ```c++
-xtree::Document expected;
+xtree::Document document;
 
 auto decl = xtree::Decl("xml", {{"version", "1.0"}});
 
 auto root = xtree::Elem("Dad", {{"name", "Tom"}, {"age", "54"}});
 root.add_node(xtree::Elem("Son", {{"name", "Joseph"}, {"age", "22"}}));
 
-expected.add_node(std::move(decl));
-expected.set_root(std::move(root));
+document.add_node(std::move(decl));
+document.set_root(std::move(root));
+```
+Or iterated over.
+```c++
+xtree::Document document;
+
+for (auto& child : *document.get_root()) {
+    
+}
 ```

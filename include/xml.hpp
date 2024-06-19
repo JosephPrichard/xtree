@@ -27,7 +27,10 @@ namespace xtree {
             return value;
         }
 
-        friend std::ostream& operator<<(std::ostream& os, const Attr& attr);
+        friend std::ostream& operator<<(std::ostream& os, const Attr& attr) {
+            os << attr.name << "=" << "\"" << attr.value << "\"";
+            return os;
+        }
 
         friend bool operator==(const Attr& attr, const Attr& other) {
             return attr.name == other.name && attr.value == other.value;
@@ -44,7 +47,20 @@ namespace xtree {
             attributes.emplace_back(std::move(name), std::move(value));
         }
 
-        friend std::ostream& operator<<(std::ostream& os, const Decl& decl);
+        friend std::ostream& operator<<(std::ostream& os, const Decl& decl) {
+            os << "<?" << decl.tag;
+            for (int i = 0; i < decl.attributes.size(); i++) {
+                if (i == 0)
+                    os << " ";
+
+                os << decl.attributes[i];
+
+                if (i < decl.attributes.size() - 1)
+                    os << " ";
+            }
+            os << "?> ";
+            return os;
+        }
 
         friend bool operator==(const Decl& decl, const Decl& other) {
             return decl.tag == other.tag && decl.attributes == other.attributes;
@@ -54,10 +70,26 @@ namespace xtree {
     struct Comment {
         std::string text;
 
-        friend std::ostream& operator<<(std::ostream& os, const Comment& comment);
+        friend std::ostream& operator<<(std::ostream& os, const Comment& comment) {
+            os << "<!-- " << comment.text << " -->";
+            return os;
+        }
 
         friend bool operator==(const Comment& comment, const Comment& other) {
             return comment.text == other.text;
+        }
+    };
+
+    struct DocType {
+        std::string text;
+
+        friend std::ostream& operator<<(std::ostream& os, const DocType& dtd) {
+            os << "<!DOCTYPE " << dtd.text << ">";
+            return os;
+        }
+
+        friend bool operator==(const DocType& dtd, const DocType& other) {
+            return dtd.text == other.text;
         }
     };
 
@@ -65,7 +97,7 @@ namespace xtree {
 
     using NodeVariant = std::variant<Elem, Comment, Text>;
 
-    using RootVariant = std::variant<Comment, Decl>;
+    using RootVariant = std::variant<Comment, Decl, DocType>;
 
     struct Node;
 
@@ -183,7 +215,7 @@ namespace xtree {
             throw NodeTypeException("node is not a comment type node");
         }
 
-        const std::string& as_text() const {
+        Text& as_text() {
             if (auto node = get_if<Text>(&data))
                 return *node;
             throw NodeTypeException("node is not a text type node");
@@ -201,7 +233,18 @@ namespace xtree {
             return nullptr;
         }
 
-        friend std::ostream& operator<<(std::ostream& os, const Node& node);
+        friend std::ostream& operator<<(std::ostream& os, const Node& node) {
+            if (auto elem = std::get_if<Elem>(&node.data)) {
+                os << *elem;
+            }
+            else if (auto text = std::get_if<Text>(&node.data)) {
+                os << *text;
+            }
+            else if (auto comment = std::get_if<Comment>(&node.data)) {
+                os << *comment;
+            }
+            return os;
+        }
 
         std::string serialize() const {
             std::stringstream ss;
@@ -231,13 +274,24 @@ namespace xtree {
             throw NodeTypeException("node is not a comment type node");
         }
 
-        const Decl& as_decl() const {
+        Decl& as_decl() {
             if (auto node = std::get_if<Decl>(&data))
                 return *node;
             throw NodeTypeException("node is not a decl type node");
         }
 
-        friend std::ostream& operator<<(std::ostream& os, const RootNode& node);
+        friend std::ostream& operator<<(std::ostream& os, const RootNode& node) {
+            if (auto text = std::get_if<Decl>(&node.data)) {
+                os << *text;
+            }
+            else if (auto decl = std::get_if<Comment>(&node.data)) {
+                os << *decl;
+            }
+            else if (auto dtd = std::get_if<DocType>(&node.data)) {
+                os << *dtd;
+            }
+            return os;
+        }
 
         std::string serialize() const {
             std::stringstream ss;
@@ -321,6 +375,42 @@ namespace xtree {
                     return false;
             }
             return true;
+        }
+    };
+
+    struct DocumentWalker {
+        virtual void on_elem(Elem& elem) {};
+
+        virtual void on_decl(Decl& decl) {};
+
+        virtual void on_text(Text& text) {};
+
+        void walk_document(Document& document) {
+            for (auto& child: document.children) {
+                if (child->is_decl()) {
+                    on_decl(child->as_decl());
+                }
+            }
+
+            on_elem(*document.root);
+
+            std::vector<Elem*> stack;
+            stack.emplace_back(document.root.get());
+
+            while (!stack.empty()) {
+                auto top = stack.back();
+                stack.pop_back();
+
+                for (auto& child: top->children) {
+                    if (child->is_text()) {
+                        on_text(child->as_text());
+                    }
+                    if (child->is_elem()) {
+                        on_elem(child->as_elem());
+                        stack.emplace_back(&child->as_elem());
+                    }
+                }
+            }
         }
     };
 

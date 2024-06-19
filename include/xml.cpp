@@ -31,10 +31,10 @@ struct XmlParser {
     }
 
     char peek() {
-        return look_ahead(0);
+        return peek_ahead(0);
     }
 
-    char look_ahead(unsigned long offset) {
+    char peek_ahead(unsigned long offset) {
         return text[index + offset];
     }
 
@@ -43,7 +43,7 @@ struct XmlParser {
             return false;
         }
         for (int i = 0; i < str.size(); i++) {
-            if (look_ahead(i) != str[i]) {
+            if (peek_ahead(i) != str[i]) {
                 return false;
             }
         }
@@ -284,8 +284,9 @@ struct XmlParser {
     static constexpr int CLOSE_BEGIN_TOK = 5;
     static constexpr int OPEN_END_TOK = 6;
     static constexpr int CLOSE_END_TOK = 7;
-    static constexpr int TEXT_TOK = 8;
-    static constexpr int NO_TOK = 9;
+    static constexpr int OPEN_DTD_TOK = 8;
+    static constexpr int TEXT_TOK = 9;
+    static constexpr int NO_TOK = 10;
 
     static std::string token_string(int tok) {
         switch (tok) {
@@ -305,6 +306,8 @@ struct XmlParser {
             return "'</'";
         case CLOSE_END_TOK:
             return "'>'";
+        case OPEN_DTD_TOK:
+            return "<!DOCTYPE";
         case TEXT_TOK:
             return "<rawtext>";
         default:
@@ -331,10 +334,19 @@ struct XmlParser {
                 read();
                 return OPEN_DECL_TOK;
             case '!': {
-                read();
-                char c2 = read();
-                char c3 = read();
+                if (matches("!DOCTYPE")) {
+                    return OPEN_DTD_TOK;
+                }
+
+                if (!has_ahead(2)) {
+                    return TEXT_TOK;
+                }
+
+                char c2 = peek_ahead(1);
+                char c3 = peek_ahead(2);
+
                 if (c2 == '-' && c3 == '-') {
+                    consume(3);
                     return OPEN_CMT_TOK;
                 }
                 else {
@@ -364,7 +376,7 @@ struct XmlParser {
                 return TEXT_TOK;
             }
 
-            if (look_ahead(1) == '>') {
+            if (peek_ahead(1) == '>') {
                 consume(2);
                 return CLOSE_BEGIN_TOK;
             }
@@ -377,7 +389,7 @@ struct XmlParser {
                 return TEXT_TOK;
             }
 
-            if (look_ahead(1) == '>') {
+            if (peek_ahead(1) == '>') {
                 consume(2);
                 return CLOSE_DECL_TOK;
             }
@@ -392,8 +404,8 @@ struct XmlParser {
                 return TEXT_TOK;
             }
 
-            char c1 = look_ahead(1);
-            char c2 = look_ahead(2);
+            char c1 = peek_ahead(1);
+            char c2 = peek_ahead(2);
 
             if (c1 == '-' && c2 == '>') {
                 consume(3);
@@ -626,6 +638,23 @@ struct XmlParser {
         return decl;
     }
 
+    DocType parse_dtd() {
+        DocType dtd;
+
+        skip_spaces();
+
+        while (has_next()) {
+            auto c = read();
+            if (c == '>') {
+                trim_spaces(dtd.text);
+                return dtd;
+            }
+            dtd.text += c;
+        }
+
+        throw end_of_stream();
+    }
+
     void parse(Document& document) {
         bool parsed_root = false;
 
@@ -645,6 +674,10 @@ struct XmlParser {
                 } else {
                     throw invalid_token("expected an xml document to only have a single root node");
                 }
+            }
+            else if (tok == OPEN_DTD_TOK) {
+                auto node = std::make_unique<RootNode>(parse_dtd());
+                document.children.emplace_back(std::move(node));
             }
             else if (tok == OPEN_DECL_TOK) {
                 auto node = std::make_unique<RootNode>(parse_decl());
@@ -692,19 +725,6 @@ void Elem::remove_node(const std::string& rtag) {
     }
 }
 
-std::ostream& xtree::operator<<(std::ostream& os, const Node& node) {
-    if (auto elem = std::get_if<Elem>(&node.data)) {
-        os << *elem;
-    }
-    else if (auto text = std::get_if<Text>(&node.data)) {
-        os << *text;
-    }
-    else if (auto comment = std::get_if<Comment>(&node.data)) {
-        os << *comment;
-    }
-    return os;
-}
-
 std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
     os << "<" << elem.tag;
     for (int i = 0; i < elem.attributes.size(); i++) {
@@ -721,41 +741,6 @@ std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
         os << *child;
     }
     os << "</" << elem.tag << "> ";
-    return os;
-}
-
-std::ostream& xtree::operator<<(std::ostream& os, const Attr& attr) {
-    os << attr.name << "=" << "\"" << attr.value << "\"";
-    return os;
-}
-
-std::ostream& xtree::operator<<(std::ostream& os, const Decl& decl) {
-    os << "<?" << decl.tag;
-    for (int i = 0; i < decl.attributes.size(); i++) {
-        if (i == 0)
-            os << " ";
-
-        os << decl.attributes[i];
-
-        if (i < decl.attributes.size() - 1)
-            os << " ";
-    }
-    os << "?> ";
-    return os;
-}
-
-std::ostream& xtree::operator<<(std::ostream& os, const Comment& comment) {
-    os << "<!-- " << comment.text << " -->";
-    return os;
-}
-
-std::ostream& xtree::operator<<(std::ostream& os, const RootNode& node) {
-    if (auto text = std::get_if<Decl>(&node.data)) {
-        os << *text;
-    }
-    else if (auto decl = std::get_if<Comment>(&node.data)) {
-        os << *decl;
-    }
     return os;
 }
 
