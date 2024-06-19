@@ -160,9 +160,12 @@ namespace xtree {
             }
         }
 
-        void add_node(NodeVariant&& node) {
+        Elem& add_node(NodeVariant&& node) {
             children.emplace_back(std::make_unique<Node>(std::move(node)));
+            return *this;
         }
+
+        std::vector<std::string> child_tags();
 
         void remove_node(const std::string& tag);
 
@@ -314,6 +317,16 @@ namespace xtree {
 
         static bool RECURSIVE_PARSER;
 
+        std::vector<std::string> child_tags() {
+            std::vector<std::string> tags;
+            for (auto& child: children) {
+                if (child->is_decl()) {
+                    tags.emplace_back(child->as_decl().tag);
+                }
+            }
+            return tags;
+        }
+
         Decl* select_decl(const std::string& tag) {
             for (auto& child: children)
                 if (auto decl = get_if<Decl>(&child->data))
@@ -341,16 +354,18 @@ namespace xtree {
             return children.end();
         }
 
-        void add_node(RootVariant&& node) {
+        Document& add_node(RootVariant&& node) {
             children.emplace_back(std::make_unique<RootNode>(std::move(node)));
+            return *this;
         }
 
         std::unique_ptr<Elem>& get_root() {
             return root;
         }
 
-        void set_root(Elem&& elem) {
+        Document& set_root(Elem&& elem) {
             root = std::make_unique<Elem>(std::move(elem));
+            return *this;
         }
 
         std::string serialize() const {
@@ -367,6 +382,13 @@ namespace xtree {
         }
 
         friend bool operator==(const Document& document, const Document& other) {
+            if (document.root != nullptr && other.root != nullptr) {
+                if (*document.root != *other.root) {
+                    return false;
+                }
+            } else if (document.root != nullptr || other.root != nullptr) {
+                return false;
+            }
             if (document.children.size() != other.children.size()) {
                 return false;
             }

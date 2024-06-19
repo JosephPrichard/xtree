@@ -725,6 +725,16 @@ void Elem::remove_node(const std::string& rtag) {
     }
 }
 
+std::vector<std::string> Elem::child_tags()  {
+    std::vector<std::string> tags;
+    for (auto& child: children) {
+        if (child->is_elem()) {
+            tags.emplace_back(child->as_elem().tag);
+        }
+    }
+    return tags;
+}
+
 std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
     os << "<" << elem.tag;
     for (int i = 0; i < elem.attributes.size(); i++) {
