@@ -186,7 +186,7 @@ struct XmlParser {
         }
     }
 
-    std::string read_rawtext() {
+    Text read_rawtext() {
         skip_spaces();
 
         std::string str;
@@ -212,7 +212,7 @@ struct XmlParser {
         }
 
         trim_spaces(str);
-        return str;
+        return {str};
     }
 
     // non unicode compliant character detection
@@ -245,7 +245,7 @@ struct XmlParser {
     void read_attrvalue(std::string& str) {
         char open_char = read();
         if (open_char != '"' && open_char != '\'') {
-            throw invalid_symbol(open_char, "attr value must begin with single or double quotes");
+            throw invalid_symbol(open_char, "attr val must begin with single or double quotes");
         }
         char close_char = open_char;
 
@@ -437,7 +437,7 @@ struct XmlParser {
                 return tok;
             }
             else if (tok == TEXT_TOK) {
-                read_attrname(attr.name);
+                read_attrname(attr.nm);
             }
             else {
                 throw unexpected_token(token_string(tok), "attrname, '>', or '/>'");
@@ -451,7 +451,7 @@ struct XmlParser {
                 throw unexpected_token(std::string(1, c), "'='");
             }
 
-            read_attrvalue(attr.value);
+            read_attrvalue(attr.val);
             attrs.emplace_back(std::move(attr));
         }
 
@@ -506,13 +506,13 @@ struct XmlParser {
         Elem elem;
 
         read_tagname(elem.tag);
-        auto close_tok = parse_attrs(elem.attributes);
+        auto close_tok = parse_attrs(elem.attrs);
 
         if (close_tok == CLOSE_END_TOK) {
-            parse_children(elem.tag, elem.children);
+            parse_children(elem.tag, elem.child_nodes);
         }
         else if (close_tok != CLOSE_BEGIN_TOK) {
-            throw invalid_token("unclosed attributes list in tag");
+            throw invalid_token("unclosed attrs list in tag");
         }
 
         return elem;
@@ -525,16 +525,16 @@ struct XmlParser {
         Elem root;
 
         read_tagname(root.tag);
-        auto close_tok = parse_attrs(root.attributes);
+        auto close_tok = parse_attrs(root.attrs);
 
         if (close_tok == CLOSE_END_TOK) {
             stack.emplace_back(&root);
         }
         else if (close_tok == CLOSE_BEGIN_TOK) {
-            // the root has no children
+            // the root has no child_nodes
             return root;
         } else {
-            throw invalid_token("unclosed attributes list in tag");
+            throw invalid_token("unclosed attrs list in tag");
         }
 
         //  parse until the stack is empty using tokens to decide when to push/pop
@@ -569,7 +569,7 @@ struct XmlParser {
                 stack.pop_back();
             } else if (tok == OPEN_CMT_TOK) {
                 auto node = std::make_unique<Node>(parse_comment());
-                top->children.emplace_back(std::move(node));
+                top->child_nodes.emplace_back(std::move(node));
             }
             else if (tok == OPEN_BEGIN_TOK) {
                 // read the next element to be processed by the parser
@@ -577,22 +577,22 @@ struct XmlParser {
                 auto elem = &node.get()->as_elem();
 
                 read_tagname(elem->tag);
-                close_tok = parse_attrs(elem->attributes);
+                close_tok = parse_attrs(elem->attrs);
 
                 if (close_tok == CLOSE_END_TOK) {
                     // this will be the next node we parse
                     stack.emplace_back(elem);
                 }
-                else if (close_tok != CLOSE_BEGIN_TOK) { // CL0SE_BEGIN_TOK means the node has no children
-                    throw invalid_token("unclosed attributes list in tag");
+                else if (close_tok != CLOSE_BEGIN_TOK) { // CL0SE_BEGIN_TOK means the node has no child_nodes
+                    throw invalid_token("unclosed attrs list in tag");
                 }
 
-                top->children.emplace_back(std::move(node));
+                top->child_nodes.emplace_back(std::move(node));
             }
             else if (tok == TEXT_TOK) {
                 auto raw_text = read_rawtext();
                 auto node = std::make_unique<Node>(std::move(raw_text));
-                top->children.emplace_back(std::move(node));
+                top->child_nodes.emplace_back(std::move(node));
             }
             else {
                 throw unexpected_token(token_string(tok), "'</', '<!--', '<', <rawtext>");
@@ -677,15 +677,15 @@ struct XmlParser {
             }
             else if (tok == OPEN_DTD_TOK) {
                 auto node = std::make_unique<RootNode>(parse_dtd());
-                document.children.emplace_back(std::move(node));
+                document.child_nodes.emplace_back(std::move(node));
             }
             else if (tok == OPEN_DECL_TOK) {
                 auto node = std::make_unique<RootNode>(parse_decl());
-                document.children.emplace_back(std::move(node));
+                document.child_nodes.emplace_back(std::move(node));
             }
             else if (tok == OPEN_CMT_TOK) {
                 auto node = std::make_unique<RootNode>(parse_comment());
-                document.children.emplace_back(std::move(node));
+                document.child_nodes.emplace_back(std::move(node));
             }
             else {
                 throw unexpected_token(token_string(tok), "'</' or '<?'");
@@ -700,7 +700,7 @@ Document::Document(const std::string& docstr) {
 }
 
 Elem* Elem::select_elem(const std::string& ctag) {
-    for (auto& child: children)
+    for (auto& child: child_nodes)
         if (auto elem = get_if<Elem>(&child->data))
             if (elem->tag == ctag)
                 return elem;
@@ -708,17 +708,17 @@ Elem* Elem::select_elem(const std::string& ctag) {
 }
 
 Attr* Elem::select_attr(const std::string& attr_name) {
-    for (auto& attr: attributes)
-        if (attr.get_name() == attr_name)
+    for (auto& attr: attrs)
+        if (attr.nm == attr_name)
             return &attr;
     return nullptr;
 }
 
 void Elem::remove_node(const std::string& rtag) {
-    auto it = children.begin();
-    while (it != children.end()) {
+    auto it = child_nodes.begin();
+    while (it != child_nodes.end()) {
         if ((*it)->is_elem() && (*it)->as_elem().tag == rtag) {
-            it = children.erase(it);
+            it = child_nodes.erase(it);
         } else {
             it++;
         }
@@ -727,7 +727,7 @@ void Elem::remove_node(const std::string& rtag) {
 
 std::vector<std::string> Elem::child_tags()  {
     std::vector<std::string> tags;
-    for (auto& child: children) {
+    for (auto& child: child_nodes) {
         if (child->is_elem()) {
             tags.emplace_back(child->as_elem().tag);
         }
@@ -737,21 +737,36 @@ std::vector<std::string> Elem::child_tags()  {
 
 std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
     os << "<" << elem.tag;
-    for (int i = 0; i < elem.attributes.size(); i++) {
+    for (int i = 0; i < elem.attrs.size(); i++) {
         if (i == 0)
             os << " ";
 
-        os << elem.attributes[i];
+        os << elem.attrs[i];
 
-        if (i < elem.attributes.size() - 1)
+        if (i < elem.attrs.size() - 1)
             os << " ";
     }
     os << "> ";
-    for (auto& child: elem.children) {
+    for (auto& child: elem.child_nodes) {
         os << *child;
     }
     os << "</" << elem.tag << "> ";
     return os;
+}
+
+Elem& Elem::operator=(const Elem& other) {
+    if (this == &other) {
+        return *this;
+    }
+
+    tag = other.tag;
+    attrs = other.attrs;
+    child_nodes.clear();
+    for (auto& node : other.child_nodes) {
+        child_nodes.emplace_back(std::make_unique<Node>(*node));
+    }
+
+    return *this;
 }
 
 #pragma clang diagnostic pop

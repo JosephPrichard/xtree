@@ -15,36 +15,88 @@
 #include <cstring>
 
 namespace xtree {
-    struct Attr {
-        std::string name;
-        std::string value;
 
-        const std::string& get_name() const {
-            return name;
+    struct Attr {
+        std::string nm;
+        std::string val;
+
+        std::string& name() {
+            return nm;
         }
 
-        const std::string& get_value() const {
-            return value;
+        std::string& value() {
+            return val;
         }
 
         friend std::ostream& operator<<(std::ostream& os, const Attr& attr) {
-            os << attr.name << "=" << "\"" << attr.value << "\"";
+            os << attr.nm << "=" << "\"";
+            for (auto c : attr.val) {
+                switch (c) {
+                case '"':
+                    os << "&quot;";
+                    break;
+                case '\'':
+                    os << "&apos;";
+                    break;
+                case '<':
+                    os << "&lt;";
+                    break;
+                case '>':
+                    os << "&gt;";
+                    break;
+                case '&':
+                    os << "&amp;";
+                    break;
+                default:
+                    os << c;
+                }
+            }
+            os << "\"";
             return os;
         }
 
-        friend bool operator==(const Attr& attr, const Attr& other) {
-            return attr.name == other.name && attr.value == other.value;
-        }
+        friend bool operator==(const Attr& attr, const Attr& other) = default;
     };
 
-    using Text = std::string;
+    struct Text {
+        std::string data;
+
+        friend std::ostream& operator<<(std::ostream& os, const Text& text) {
+            for (auto c : text.data) {
+                switch (c) {
+                case '"':
+                    os << "&quot;";
+                    break;
+                case '\'':
+                    os << "&apos;";
+                    break;
+                case '<':
+                    os << "&lt;";
+                    break;
+                case '>':
+                    os << "&gt;";
+                    break;
+                case '&':
+                    os << "&amp;";
+                    break;
+                default:
+                    os << c;
+                }
+            }
+            os << ' ';
+            return os;
+        }
+
+        friend bool operator==(const Text& attr, const Text& other) = default;
+    };
 
     struct Decl {
         std::string tag;
         std::vector<Attr> attributes;
 
-        void add_attribute(std::string&& name, std::string&& value) {
+        Decl& add_attr(std::string&& name, std::string&& value) {
             attributes.emplace_back(std::move(name), std::move(value));
+            return *this;
         }
 
         friend std::ostream& operator<<(std::ostream& os, const Decl& decl) {
@@ -62,9 +114,7 @@ namespace xtree {
             return os;
         }
 
-        friend bool operator==(const Decl& decl, const Decl& other) {
-            return decl.tag == other.tag && decl.attributes == other.attributes;
-        }
+        friend bool operator==(const Decl& decl, const Decl& other) = default;
     };
 
     struct Comment {
@@ -75,9 +125,7 @@ namespace xtree {
             return os;
         }
 
-        friend bool operator==(const Comment& comment, const Comment& other) {
-            return comment.text == other.text;
-        }
+        friend bool operator==(const Comment& comment, const Comment& other) = default;
     };
 
     struct DocType {
@@ -88,9 +136,7 @@ namespace xtree {
             return os;
         }
 
-        friend bool operator==(const DocType& dtd, const DocType& other) {
-            return dtd.text == other.text;
-        }
+        friend bool operator==(const DocType& dtd, const DocType& other) = default;
     };
 
     struct Elem;
@@ -105,8 +151,8 @@ namespace xtree {
 
     struct Elem {
         std::string tag;
-        std::vector<Attr> attributes;
-        std::vector<std::unique_ptr<Node>> children;
+        std::vector<Attr> attrs;
+        std::vector<std::unique_ptr<Node>> child_nodes;
 
         Elem() = default;
 
@@ -116,44 +162,53 @@ namespace xtree {
             : Elem(Elem(std::move(tag), std::move(attributes), {})) {}
 
         Elem(std::string&& tag, std::vector<Attr>&& attributes, std::vector<std::unique_ptr<Node>>&& children) noexcept
-            : tag(std::move(tag)), attributes(std::move(attributes)), children(std::move(children)) {}
-
-        std::vector<std::unique_ptr<Node>>::iterator begin() {
-            return children.begin();
-        }
-
-        std::vector<std::unique_ptr<Node>>::iterator end() {
-            return children.end();
-        }
+            : tag(std::move(tag)), attrs(std::move(attributes)), child_nodes(std::move(children)) {}
 
         Elem(const Elem& other) noexcept {
             tag = other.tag;
-            attributes = other.attributes;
-            children.clear();
-            for (auto& child: other.children) {
-                children.emplace_back(std::make_unique<Node>(*child));
+            attrs = other.attrs;
+            child_nodes.clear();
+            for (auto& child: other.child_nodes) {
+                child_nodes.emplace_back(std::make_unique<Node>(*child));
             }
         }
 
         Elem(Elem&&) = default;
 
-        const std::string& get_tag() const {
-            return tag;
-        }
-
         Elem* select_elem(const std::string& ctag);
 
         Attr* select_attr(const std::string& attr_name);
 
-        void add_attr(std::string&& name, std::string&& value) {
-            attributes.emplace_back(std::move(name), std::move(value));
+        std::vector<std::unique_ptr<Node>>::iterator begin() {
+            return child_nodes.begin();
+        }
+
+        std::vector<std::unique_ptr<Node>>::iterator end() {
+            return child_nodes.end();
+        }
+
+        std::string& tagname() {
+            return tag;
+        }
+
+        std::vector<Attr>& attributes() {
+            return attrs;
+        }
+
+        std::vector<std::unique_ptr<Node>>& children() {
+            return child_nodes;
+        }
+
+        Elem& add_attr(std::string&& name, std::string&& value) {
+            attrs.emplace_back(std::move(name), std::move(value));
+            return *this;
         }
 
         void remove_attr(const std::string& name) {
-            auto it = attributes.begin();
-            while (it != attributes.end()) {
-                if (it->name == name) {
-                    it = attributes.erase(it);
+            auto it = attrs.begin();
+            while (it != attrs.end()) {
+                if (it->nm == name) {
+                    it = attrs.erase(it);
                 } else {
                     it++;
                 }
@@ -161,7 +216,7 @@ namespace xtree {
         }
 
         Elem& add_node(NodeVariant&& node) {
-            children.emplace_back(std::make_unique<Node>(std::move(node)));
+            child_nodes.emplace_back(std::make_unique<Node>(std::move(node)));
             return *this;
         }
 
@@ -172,19 +227,21 @@ namespace xtree {
         friend std::ostream& operator<<(std::ostream& os, const Elem& elem);
 
         friend bool operator==(const Elem& elem, const Elem& other) {
-            if (elem.tag != other.tag || elem.attributes != other.attributes) {
+            if (elem.tag != other.tag || elem.attrs != other.attrs) {
                 return false;
             }
 
-            if (elem.children.size() != other.children.size()) {
+            if (elem.child_nodes.size() != other.child_nodes.size()) {
                 return false;
             }
-            for (int i = 0; i < elem.children.size(); i++) {
-                if (*elem.children[i] != *other.children[i])
+            for (int i = 0; i < elem.child_nodes.size(); i++) {
+                if (*elem.child_nodes[i] != *other.child_nodes[i])
                     return false;
             }
             return true;
         }
+
+        Elem& operator=(const Elem& other);
     };
 
     struct NodeTypeException : public std::exception {
@@ -318,7 +375,7 @@ namespace xtree {
     };
 
     struct Document {
-        std::vector<std::unique_ptr<RootNode>> children;
+        std::vector<std::unique_ptr<RootNode>> child_nodes;
         std::unique_ptr<Elem> root;
 
         Document() = default;
@@ -329,7 +386,7 @@ namespace xtree {
 
         std::vector<std::string> child_tags() {
             std::vector<std::string> tags;
-            for (auto& child: children) {
+            for (auto& child: child_nodes) {
                 if (child->is_decl()) {
                     tags.emplace_back(child->as_decl().tag);
                 }
@@ -338,7 +395,7 @@ namespace xtree {
         }
 
         Decl* select_decl(const std::string& tag) {
-            for (auto& child: children)
+            for (auto& child: child_nodes)
                 if (auto decl = get_if<Decl>(&child->data))
                     if (decl->tag == tag)
                         return decl;
@@ -346,10 +403,10 @@ namespace xtree {
         }
 
         void remove_decl(const std::string& rtag) {
-            auto it = children.begin();
-            while (it != children.end()) {
+            auto it = child_nodes.begin();
+            while (it != child_nodes.end()) {
                 if ((*it)->is_decl() && (*it)->as_decl().tag == rtag) {
-                    it = children.erase(it);
+                    it = child_nodes.erase(it);
                 } else {
                     it++;
                 }
@@ -357,19 +414,23 @@ namespace xtree {
         }
 
         std::vector<std::unique_ptr<RootNode>>::iterator begin() {
-            return children.begin();
+            return child_nodes.begin();
         }
 
         std::vector<std::unique_ptr<RootNode>>::iterator end() {
-            return children.end();
+            return child_nodes.end();
         }
 
         Document& add_node(RootVariant&& node) {
-            children.emplace_back(std::make_unique<RootNode>(std::move(node)));
+            child_nodes.emplace_back(std::make_unique<RootNode>(std::move(node)));
             return *this;
         }
 
-        std::unique_ptr<Elem>& get_root() {
+        std::vector<std::unique_ptr<RootNode>>& children() {
+            return child_nodes;
+        }
+
+        std::unique_ptr<Elem>& root_elem() {
             return root;
         }
 
@@ -385,7 +446,7 @@ namespace xtree {
         }
 
         friend std::ostream& operator<<(std::ostream& os, const Document& document) {
-            for (auto& node: document.children)
+            for (auto& node: document.child_nodes)
                 os << *node;
             os << *document.root;
             return os;
@@ -399,11 +460,11 @@ namespace xtree {
             } else if (document.root != nullptr || other.root != nullptr) {
                 return false;
             }
-            if (document.children.size() != other.children.size()) {
+            if (document.child_nodes.size() != other.child_nodes.size()) {
                 return false;
             }
-            for (int i = 0; i < document.children.size(); i++) {
-                if (*document.children[i] != *other.children[i])
+            for (int i = 0; i < document.child_nodes.size(); i++) {
+                if (*document.child_nodes[i] != *other.child_nodes[i])
                     return false;
             }
             return true;
@@ -418,7 +479,7 @@ namespace xtree {
         virtual void on_text(Text& text) {};
 
         void walk_document(Document& document) {
-            for (auto& child: document.children) {
+            for (auto& child: document.child_nodes) {
                 if (child->is_decl()) {
                     on_decl(child->as_decl());
                 }
@@ -433,7 +494,7 @@ namespace xtree {
                 auto top = stack.back();
                 stack.pop_back();
 
-                for (auto& child: top->children) {
+                for (auto& child: top->child_nodes) {
                     if (child->is_text()) {
                         on_text(child->as_text());
                     }

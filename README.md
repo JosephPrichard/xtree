@@ -36,7 +36,7 @@ ofs << document;
 Nodes on the document tree can be accessed or modified using utility functions.
 ```c++
 auto child = document.find_element("Manager")->select_elem("Programmer");
-auto value = document.select_elem("Employee")->select_attr("name")->get_value();
+auto value = document.select_elem("Employee")->select_attr("name")->value();
 
 document.add_node(xtree::Elem("CEO"));
 document.select_elem("CEO")->add_attribute("name", "Joseph");
@@ -67,7 +67,7 @@ for (std::unique_ptr<xtree::RootNode>& child : document) {
     }
 }
 
-for (std::unique_ptr<xtree::Node>& child : *document.get_root()) {
+for (std::unique_ptr<xtree::Node>& child : *document.root_elem()) {
     if (child->is_elem()) {
         std::cout << child->as_elem().tag << std::endl;
     } else if (child->is_text()) {
@@ -76,4 +76,15 @@ for (std::unique_ptr<xtree::Node>& child : *document.get_root()) {
         std::cout << child->as_comment().text << std::endl;
     }
 }
+```
+Copy or move fragments of documents to and from each other.
+
+```c++
+xtree::Document document("employees1.xml");
+xtree::Document document2("employees2.xml");
+
+auto& employees = document.root_elem().select_elem("Employees");
+auto& employees2 = document.root_elem().select_elem("Employees");
+
+employees = employees;
 ```

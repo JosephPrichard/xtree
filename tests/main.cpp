@@ -68,6 +68,30 @@ void test_unopened_tag() {
     }
 }
 
+void test_escseq() {
+    auto docstr = "<Test name=\"&quot; &apos; &lt; &gt; &amp;\"> &quot; &apos; &lt; &gt; &amp; </Test>";
+
+    xtree::Document document(docstr);
+
+    xtree::Document expected;
+    auto root = xtree::Elem("Test")
+        .add_attr("name", "\" ' < > &")
+        .add_node(xtree::Text("\" ' < > &"));
+    expected.set_root(std::move(root));
+
+    if (expected != document) {
+        std::cerr << "Failed test_escseq\nExpected: \n" << expected.serialize() <<
+                  "\nbut got \n" << document.serialize() << "\n" << std::endl;
+    }
+
+    auto doc_ser = document.serialize();
+    auto expected_ser = "<Test name=\"&quot; &apos; &lt; &gt; &amp;\"> &quot; &apos; &lt; &gt; &amp; </Test> ";
+    if (doc_ser != expected_ser) {
+        std::cerr << "Failed test_escseq\nExpected: \n" << expected_ser <<
+                  "\nbut got \n" << doc_ser << "\n" << std::endl;
+    }
+}
+
 void test_dtd() {
     auto docstr =
         "<!DOCTYPE hello testing123 hello  >"
@@ -222,10 +246,10 @@ void test_remove_attr() {
     document.set_root(std::move(root));
 
     document.remove_decl("xml");
-    document.get_root()->remove_node("Name");
-    document.get_root()->remove_attr("TestId");
+    document.root_elem()->remove_node("Name");
+    document.root_elem()->remove_attr("TestId");
 
-    auto tags = document.get_root()->child_tags();
+    auto tags = document.root_elem()->child_tags();
 
     std::vector<std::string> expected_tags = {"Name1"};
     if (tags != expected_tags) {
@@ -327,6 +351,16 @@ void test_complex_doc() {
     }
 }
 
+void test_copy() {
+    xtree::Document document;
+    xtree::Document document2;
+
+    auto employees = document.root_elem()->select_elem("Employees");
+    auto employees2 = document.root_elem()->select_elem("Employees");
+
+    *employees2 = *employees;
+}
+
 void test_walk_doc() {
     auto docstr =
         "<?xml version=\"1.0\"?> "
@@ -343,17 +377,17 @@ void test_walk_doc() {
 
     xtree::Document document(docstr);
 
-    auto attr_value = document.get_root()->select_attr("Id")->get_value();
+    auto attr_value = document.root_elem()->select_attr("Id")->value();
     if (attr_value != "123") {
         std::cerr << "Expected '123' for attr but got " << attr_value << std::endl;
     }
 
-    auto tag = document.get_root()->select_elem("Test")->get_tag();
+    auto tag = document.root_elem()->select_elem("Test")->tagname();
     if (tag != "Test") {
         std::cerr << "Expected 'Test' for tag but got " << attr_value << std::endl;
     }
 
-    auto attr2 = document.get_root()->select_attr("Nope");
+    auto attr2 = document.root_elem()->select_attr("Nope");
     if (attr2 != nullptr) {
         std::cerr << "Expected nullptr for attr but got " << attr_value << std::endl;
     }
@@ -387,7 +421,7 @@ void test_walk_doc_root() {
 
     std::vector tags = {"Test", "xsd:Test"};
     int i = 0;
-    for (auto& child: *document.get_root()) {
+    for (auto& child: *document.root_elem()) {
         if (!child->is_elem()) {
             std::cerr << "Expected nodes should be elem nodes" << std::endl;
         }
@@ -417,7 +451,7 @@ void test_walk_tree() {
         }
 
         void on_text(xtree::Text& text) override {
-            if (text != "Testing Text") {
+            if (text.data != "Testing Text") {
                 std::cerr << "Expected Testing Text for text but got " << text << std::endl;
             }
         }
@@ -464,6 +498,8 @@ int main() {
     test_comment();
     test_unopened_tag();
     test_cdata();
+    test_dtd();
+    test_escseq();
     test_unclosed();
     test_unequal_tags();
     test_multiple_roots();
@@ -476,7 +512,7 @@ int main() {
     test_walk_doc();
     test_walk_doc_root();
     test_walk_tree();
-    test_dtd();
+    test_copy();
 
     test_from_file("../input/employee_records.xml");
     test_from_file("../input/plant_catalog.xml");
