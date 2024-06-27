@@ -179,6 +179,10 @@ namespace xtree {
 
         Attr* select_attr(const std::string& attr_name);
 
+        Elem& select_elem_ex(const std::string& ctag);
+
+        Attr& select_attr_ex(const std::string& attr_name);
+
         std::vector<std::unique_ptr<Node>>::iterator begin() {
             return child_nodes.begin();
         }
@@ -244,10 +248,10 @@ namespace xtree {
         Elem& operator=(const Elem& other);
     };
 
-    struct NodeTypeException : public std::exception {
+    struct NodeWalkException : public std::exception {
         std::string message;
 
-        explicit NodeTypeException(std::string&& m) : message(std::move(m)) {}
+        explicit NodeWalkException(std::string&& m) : message(std::move(m)) {}
 
         const char* what() const noexcept override {
             return message.c_str();
@@ -272,19 +276,19 @@ namespace xtree {
         Comment& as_comment() {
             if (auto node = get_if<Comment>(&data))
                 return *node;
-            throw NodeTypeException("node is not a comment type node");
+            throw NodeWalkException("node is not a comment type node");
         }
 
         Text& as_text() {
             if (auto node = get_if<Text>(&data))
                 return *node;
-            throw NodeTypeException("node is not a text type node");
+            throw NodeWalkException("node is not a text type node");
         }
 
         Elem& as_elem() {
             if (auto elem = get_if<Elem>(&data))
                 return *elem;
-            throw NodeTypeException("node is not an elem type node");
+            throw NodeWalkException("node is not an elem type node");
         }
 
         Elem* find_element(const char* tag) {
@@ -335,19 +339,19 @@ namespace xtree {
         Comment& as_comment() {
             if (auto node = std::get_if<Comment>(&data))
                 return *node;
-            throw NodeTypeException("node is not a comment type node");
+            throw NodeWalkException("node is not a comment type node");
         }
 
         Decl& as_decl() {
             if (auto node = std::get_if<Decl>(&data))
                 return *node;
-            throw NodeTypeException("node is not a decl type node");
+            throw NodeWalkException("node is not a decl type node");
         }
 
         DocType& as_dtd() {
             if (auto node = std::get_if<DocType>(&data))
                 return *node;
-            throw NodeTypeException("node is not a decl type node");
+            throw NodeWalkException("node is not a decl type node");
         }
 
         friend std::ostream& operator<<(std::ostream& os, const RootNode& node) {
@@ -434,7 +438,14 @@ namespace xtree {
             return root;
         }
 
-        Document& set_root(Elem&& elem) {
+        Elem& root_elem_ex() {
+            if (root != nullptr) {
+                return *root;
+            }
+            throw NodeWalkException("Document does not contain a root element");
+        }
+
+        Document& set_root(Elem elem) {
             root = std::make_unique<Elem>(std::move(elem));
             return *this;
         }

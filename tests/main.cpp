@@ -351,29 +351,86 @@ void test_complex_doc() {
     }
 }
 
-void test_copy() {
-    xtree::Document document;
+void test_copy_assign() {
+    xtree::Document document1;
+    auto root1 = xtree::Elem("Two")
+        .add_node(xtree::Text("Two.One"))
+        .add_node(xtree::Elem("Three")
+            .add_node(xtree::Text("Three.One")))
+        .add_node(xtree::Elem("Four")
+            .add_node(xtree::Elem("Five")));
+    document1.set_root(xtree::Elem("One").add_node(root1));
+
     xtree::Document document2;
+    auto root2 = xtree::Elem("Two")
+        .add_node(xtree::Text("Two.One"));
+    document2.set_root(xtree::Elem("One").add_node(root2));
 
-    auto employees = document.root_elem()->select_elem("Employees");
-    auto employees2 = document.root_elem()->select_elem("Employees");
+    auto& root_ref1 = document1.root_elem_ex().select_elem_ex("Two");
+    auto& roof_ref2 = document2.root_elem_ex().select_elem_ex("Two");
+    auto& elem_ref1 = root_ref1.select_elem_ex("Four").select_elem_ex("Five");
 
-    *employees2 = *employees;
+    elem_ref1 = roof_ref2;
+    roof_ref2 = root_ref1;
+
+    xtree::Document expected;
+    auto root3 = xtree::Elem("Two")
+        .add_node(xtree::Text("Two.One"))
+        .add_node(xtree::Elem("Three")
+            .add_node(xtree::Text("Three.One")))
+        .add_node(xtree::Elem("Four")
+            .add_node(xtree::Elem("Two")
+                .add_node(xtree::Text("Two.One"))));
+    expected.set_root(xtree::Elem("One").add_node(root3));
+
+    if (expected != document2) {
+        std::cerr << "Failed test_copy_assign\nExpected: \n" <<
+                  expected.serialize() << "\nbut got \n" << document1.serialize() << "\n" << std::endl;
+    }
+}
+
+void test_copy_assign_self() {
+    xtree::Document document;
+    auto root = xtree::Elem("Two")
+        .add_node(xtree::Text("Two.One"))
+        .add_node(xtree::Elem("Three")
+            .add_node(xtree::Text("Three.One")))
+        .add_node(xtree::Elem("Four")
+            .add_node(xtree::Elem("Five")));
+    document.set_root(xtree::Elem("One").add_node(root));
+
+    auto& elem_ref = document.root_elem_ex().select_elem_ex("Two");
+    auto& roof_ref = document.root_elem_ex();
+    roof_ref = elem_ref;
+
+    xtree::Document expected;
+    auto root2 = xtree::Elem("Two")
+        .add_node(xtree::Text("Two.One"))
+        .add_node(xtree::Elem("Three")
+            .add_node(xtree::Text("Three.One")))
+        .add_node(xtree::Elem("Four")
+            .add_node(xtree::Elem("Five")));
+    expected.set_root(root2);
+
+    if (expected != document) {
+        std::cerr << "Failed test_copy_assign\nExpected: \n" <<
+                  expected.serialize() << "\nbut got \n" << document.serialize() << "\n" << std::endl;
+    }
 }
 
 void test_walk_doc() {
     auto docstr =
-        "<?xml version=\"1.0\"?> "
-        "<?xmlmeta?> "
+        "<?xml version=\"1.0\"?>"
+        "<?xmlmeta?>"
         "<Tests Id=\"123\"> "
-        "<Test TestId=\"0001\" TestType=\"CMD\"> "
+        "<Test TestId=\"0001\" TestType=\"CMD\">"
         "Testing 123 Testing 123"
         "<!-- Here is a comment -->"
-        "<xsd:Test TestId=\"0001\" TestType=\"CMD\"> "
+        "<xsd:Test TestId=\"0001\" TestType=\"CMD\">"
         "The Internal Text"
         "</xsd:Test> "
-        "</Test> "
-        "</Tests> ";
+        "</Test>"
+        "</Tests>";
 
     xtree::Document document(docstr);
 
@@ -464,59 +521,37 @@ void test_walk_tree() {
     walker.walk_document(document);
 }
 
-void test_from_file(const std::string& file_path) {
-    auto start = std::chrono::steady_clock::now();
-
-    std::ifstream file(file_path);
-    std::string docstr;
-
-    if (file.is_open()) {
-        std::string line;
-        while (std::getline(file, line)) {
-            docstr += line + "\n";
-        }
-        file.close();
-    }
-    else {
-        std::cerr << "Failed to read test file: " << file_path << std::endl;
-        exit(1);
-    }
-
-    for (int i = 0; i < 100; i++) {
-        xtree::Document document(docstr);
-    }
-
-    auto stop = std::chrono::steady_clock::now();
-    auto eteTime = std::chrono::duration<double, std::milli>(stop - start);
-
-    std::cout << "Took " << std::fixed << std::setprecision(2) << eteTime.count() << " ms to parse all files" << std::endl;
-}
-
 int main() {
     xtree::Document::RECURSIVE_PARSER = false;
 
-    test_comment();
-    test_unopened_tag();
-    test_cdata();
-    test_dtd();
-    test_escseq();
-    test_unclosed();
-    test_unequal_tags();
-    test_multiple_roots();
-    test_decl();
-    test_larger_doc();
-    test_complex_doc();
-    test_dashed_comment();
-    test_copy_tree();
-    test_remove_attr();
-    test_walk_doc();
-    test_walk_doc_root();
-    test_walk_tree();
-    test_copy();
+    auto start = std::chrono::steady_clock::now();
 
-    test_from_file("../input/employee_records.xml");
-    test_from_file("../input/plant_catalog.xml");
-    test_from_file("../input/books_catalog.xml");
-    test_from_file("../input/employee_hierarchy.xml");
-    test_from_file("../input/book_store.xml");
+    try {
+        test_comment();
+        test_unopened_tag();
+        test_cdata();
+        test_dtd();
+        test_escseq();
+        test_unclosed();
+        test_unequal_tags();
+        test_multiple_roots();
+        test_decl();
+        test_larger_doc();
+        test_complex_doc();
+        test_dashed_comment();
+        test_copy_tree();
+        test_remove_attr();
+        test_walk_doc();
+        test_walk_doc_root();
+        test_walk_tree();
+        test_copy_assign();
+        test_copy_assign_self();
+    } catch (std::exception& ex) {
+        std::cerr << ex.what() << std::endl;
+    }
+
+    auto stop = std::chrono::steady_clock::now();
+    auto eteTime = std::chrono::duration<double, std::milli>(stop - start).count();
+
+    std::cout << "Finished executing all tests in " << std::fixed << std::setprecision(2) << eteTime << " ms" << std::endl;
 }

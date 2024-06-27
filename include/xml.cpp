@@ -8,6 +8,7 @@
 #include <iostream>
 #include <memory_resource>
 #include <array>
+#include <stack>
 #include "xml.hpp"
 
 using namespace xtree;
@@ -483,15 +484,18 @@ struct XmlParser {
                 return;
             }
             else if (tok == OPEN_CMT_TOK) {
-                auto node = std::make_unique<Node>(parse_comment());
+                auto comment = parse_comment();
+                auto node = std::make_unique<Node>(comment);
                 children.emplace_back(std::move(node));
             }
             else if (tok == OPEN_BEGIN_TOK) {
-                auto node = std::make_unique<Node>(parse_elem());
+                auto elem = parse_elem();
+                auto node = std::make_unique<Node>(elem);
                 children.emplace_back(std::move(node));
             }
             else if (tok == TEXT_TOK) {
-                auto node = std::make_unique<Node>(read_rawtext());
+                auto raw_text = read_rawtext();
+                auto node = std::make_unique<Node>(raw_text);
                 children.emplace_back(std::move(node));
             }
             else {
@@ -519,7 +523,7 @@ struct XmlParser {
     }
 
     Elem parse_elem_tree() {
-        std::vector<Elem*> stack;
+        std::stack<Elem*> stack;
 
         // start by parsing the root elem node
         Elem root;
@@ -528,7 +532,7 @@ struct XmlParser {
         auto close_tok = parse_attrs(root.attrs);
 
         if (close_tok == CLOSE_END_TOK) {
-            stack.emplace_back(&root);
+            stack.push(&root);
         }
         else if (close_tok == CLOSE_BEGIN_TOK) {
             // the root has no child_nodes
@@ -542,7 +546,7 @@ struct XmlParser {
             if (!has_next()) {
                 throw end_of_stream();
             }
-            auto top = stack.back();
+            auto top = stack.top();
 
             auto tok = read_open_tok();
 
@@ -566,22 +570,23 @@ struct XmlParser {
                 }
 
                 // reaching the end of this node means we back track
-                stack.pop_back();
+                stack.pop();
             } else if (tok == OPEN_CMT_TOK) {
-                auto node = std::make_unique<Node>(parse_comment());
+                auto comment = parse_comment();
+                auto node = std::make_unique<Node>(comment);
                 top->child_nodes.emplace_back(std::move(node));
             }
             else if (tok == OPEN_BEGIN_TOK) {
                 // read the next element to be processed by the parser
                 auto node = std::make_unique<Node>(Elem());
-                auto elem = &node.get()->as_elem();
+                auto elem_ptr = &node.get()->as_elem();
 
-                read_tagname(elem->tag);
-                close_tok = parse_attrs(elem->attrs);
+                read_tagname(elem_ptr->tag);
+                close_tok = parse_attrs(elem_ptr->attrs);
 
                 if (close_tok == CLOSE_END_TOK) {
                     // this will be the next node we parse
-                    stack.emplace_back(elem);
+                    stack.push(elem_ptr);
                 }
                 else if (close_tok != CLOSE_BEGIN_TOK) { // CL0SE_BEGIN_TOK means the node has no child_nodes
                     throw invalid_token("unclosed attrs list in tag");
@@ -591,7 +596,7 @@ struct XmlParser {
             }
             else if (tok == TEXT_TOK) {
                 auto raw_text = read_rawtext();
-                auto node = std::make_unique<Node>(std::move(raw_text));
+                auto node = std::make_unique<Node>(raw_text);
                 top->child_nodes.emplace_back(std::move(node));
             }
             else {
@@ -666,9 +671,11 @@ struct XmlParser {
             if (tok == OPEN_BEGIN_TOK) {
                 if (!parsed_root) {
                     if (Document::RECURSIVE_PARSER) {
-                        document.set_root(parse_elem());
+                        auto elem = parse_elem();
+                        document.set_root(std::move(elem));
                     } else {
-                        document.set_root(parse_elem_tree());
+                        auto elem = parse_elem_tree();
+                        document.set_root(std::move(elem));
                     }
                     parsed_root = true;
                 } else {
@@ -676,15 +683,18 @@ struct XmlParser {
                 }
             }
             else if (tok == OPEN_DTD_TOK) {
-                auto node = std::make_unique<RootNode>(parse_dtd());
+                auto dtd = parse_dtd();
+                auto node = std::make_unique<RootNode>(dtd);
                 document.child_nodes.emplace_back(std::move(node));
             }
             else if (tok == OPEN_DECL_TOK) {
-                auto node = std::make_unique<RootNode>(parse_decl());
+                auto decl = parse_decl();
+                auto node = std::make_unique<RootNode>(decl);
                 document.child_nodes.emplace_back(std::move(node));
             }
             else if (tok == OPEN_CMT_TOK) {
-                auto node = std::make_unique<RootNode>(parse_comment());
+                auto comment = parse_comment();
+                auto node = std::make_unique<RootNode>(comment);
                 document.child_nodes.emplace_back(std::move(node));
             }
             else {
@@ -712,6 +722,21 @@ Attr* Elem::select_attr(const std::string& attr_name) {
         if (attr.nm == attr_name)
             return &attr;
     return nullptr;
+}
+
+Elem& Elem::select_elem_ex(const std::string& ctag) {
+    for (auto& child: child_nodes)
+        if (auto elem = get_if<Elem>(&child->data))
+            if (elem->tag == ctag)
+                return *elem;
+    throw NodeWalkException("Element does not contain child with tag name " + ctag);
+}
+
+Attr& Elem::select_attr_ex(const std::string& attr_name) {
+    for (auto& attr: attrs)
+        if (attr.nm == attr_name)
+            return attr;
+    throw NodeWalkException("Element does not contain attribute with name " + attr_name);
 }
 
 void Elem::remove_node(const std::string& rtag) {
@@ -761,9 +786,18 @@ Elem& Elem::operator=(const Elem& other) {
 
     tag = other.tag;
     attrs = other.attrs;
-    child_nodes.clear();
+
+    // we must store the copied nodes somewhere before we clear and append since other.child_nodes might be a child of child_nodes
+    std::vector<std::unique_ptr<Node>> copy_child_nodes;
+    copy_child_nodes.reserve(other.child_nodes.size());
+
     for (auto& node : other.child_nodes) {
-        child_nodes.emplace_back(std::make_unique<Node>(*node));
+        copy_child_nodes.emplace_back(std::make_unique<Node>(*node));
+    }
+
+    child_nodes.clear();
+    for (auto& node : copy_child_nodes) {
+        child_nodes.emplace_back(std::move(node));
     }
 
     return *this;
