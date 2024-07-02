@@ -1,19 +1,17 @@
-# Variables
 CXXFLAGS = -Iinclude -Wall -std=c++20
 
-# Executable name
 EXEC = main
 
-# Default target
 all: main
 
-# Compile source files into the executable directly
-main: ../tests/main.cpp
-	g++ $(CXXFLAGS) main.cpp ../include/xml.cpp ../include/xml.hpp -o ./out/test.exe -O3
+main: ../benchmarks/main.cpp
+	mkdir -p ./out
+	g++ $(CXXFLAGS) main.cpp ../include/xtree.cpp ../include/xtree.hpp -o ./out/benchmark.exe -O3
 
-# Clean up build files
+run:
+	cd out && ./benchmark.exe
+
 clean:
-	rm -f ./out/test.exe
+	rm -rf ./out
 
-# Phony targets
 .PHONY: all clean

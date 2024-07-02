@@ -6,7 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include "../include/xml.hpp"
+#include "../include/xtree.hpp"
 
 void test_comment() {
     auto docstr =
@@ -130,7 +130,7 @@ void test_cdata() {
 
     if (expected != document) {
         std::cerr << "Failed test_small_document\nExpected: \n" << expected.serialize() <<
-                  "\nbut got \n" << document.serialize() << "\n" << std::endl;
+                  "\nGot: \n" << document.serialize() << "\n" << std::endl;
     }
 }
 
@@ -142,13 +142,13 @@ void test_unclosed() {
     try {
         xtree::Document document(docstr);
     } catch (std::exception& ex) {
-        auto expected_msg = "reached the end of the stream while parsing at row 0 at col 42";
+        auto expected_msg = "reached the end of the stream while parsing at row 1 at col 43";
         if (strcmp(ex.what(), expected_msg) != 0) {
-            std::cerr << "Expected message to read\n" << expected_msg << "\n but got \n" << ex.what() << "\n" << std::endl;
+            std::cerr << "Expected message to read\n" << expected_msg << "\nGot: \n" << ex.what() << "\n" << std::endl;
         }
         return;
     }
-    std::cerr << "Expected document parse to throw an exception";
+    std::cerr << "Expected document parse to throw an exception" << std::endl;
 }
 
 void test_unequal_tags() {
@@ -157,13 +157,13 @@ void test_unequal_tags() {
     try {
         xtree::Document document(docstr);
     } catch (std::exception& ex) {
-        auto expected_msg = "encountered invalid token in stream: Test1 but expected closing tag 'Test' at row 0 at col 22";
+        auto expected_msg = "encountered invalid token in stream: 'Test1' but expected closing tag 'Test' at row 1 at col 23";
         if (strcmp(ex.what(), expected_msg) != 0) {
-            std::cerr << "Expected message to read\n" << expected_msg << "\n but got \n" << ex.what() << "\n" << std::endl;
+            std::cerr << "Expected message to read\n" << expected_msg << "\nGot: \n" << ex.what() << "\n" << std::endl;
         }
         return;
     }
-    std::cerr << "Expected document parse to throw an exception";
+    std::cerr << "Expected document parse to throw an exception" << std::endl;
 }
 
 void test_multiple_roots() {
@@ -171,13 +171,13 @@ void test_multiple_roots() {
     try {
         xtree::Document document(docstr);
     } catch (std::exception& ex) {
-        auto expected_msg = "expected an xml document to only have a single root node at row 0 at col 16";
+        auto expected_msg = "expected an xml document to only have a single root node at row 1 at col 17";
         if (strcmp(ex.what(), expected_msg) != 0) {
-            std::cerr << "Expected message to read\n" << expected_msg << "\n but got \n" << ex.what() << "\n" << std::endl;
+            std::cerr << "Expected message to read\n" << expected_msg << "\nGot: \n" << ex.what() << "\n" << std::endl;
         }
         return;
     }
-    std::cerr << "Expected document parse to throw an exception";
+    std::cerr << "Expected document parse to throw an exception" << std::endl;
 }
 
 void test_copy_tree() {
@@ -200,7 +200,7 @@ void test_copy_tree() {
         "</Test> ";
 
     if (document.serialize() != expected_docstr) {
-        std::cerr << "Expected serialized to be \n" << expected_docstr << "\nbut got\n" << document.serialize() << std::endl;
+        std::cerr << "Expected serialized to be \n" << expected_docstr << "\nGot:\n" << document.serialize() << std::endl;
     }
 }
 
@@ -222,7 +222,7 @@ void test_decl() {
 
     if (expected != document) {
         std::cerr << "Failed test_decl\nExpected: \n" << expected.serialize() <<
-                  "\nbut got \n" << document.serialize() << "\n" << std::endl;
+                  "\nGot: \n" << document.serialize() << "\n" << std::endl;
     }
 }
 
@@ -254,13 +254,13 @@ void test_remove_attr() {
     std::vector<std::string> expected_tags = {"Name1"};
     if (tags != expected_tags) {
         std::cerr << "Failed test_decl\nExpected: \n" << vecstr_to_string(expected_tags) <<
-                  "\nbut got \n" << vecstr_to_string(tags) << "\n" << std::endl;
+                  "\nGot: \n" << vecstr_to_string(tags) << "\n" << std::endl;
     }
 
     std::vector<std::string> attr = {{"TestId", "0001"}, {"TestType", "CMD"}};
     if (tags != expected_tags) {
         std::cerr << "Failed test_decl\nExpected: \n" << vecstr_to_string(expected_tags) <<
-                  "\nbut got \n" << vecstr_to_string(tags) << "\n" << std::endl;
+                  "\nGot: \n" << vecstr_to_string(tags) << "\n" << std::endl;
     }
 }
 
@@ -298,7 +298,27 @@ void test_larger_doc() {
 
     if (document != expected) {
         std::cerr << "Failed test_larger_doc\nExpected: \n" <<
-                expected.serialize() << "\nbut got \n" << document.serialize() << "\n" << std::endl;
+                expected.serialize() << "\nGot: \n" << document.serialize() << "\n" << std::endl;
+    }
+}
+
+void test_begin_cdata() {
+    auto docstr = 
+        "<description>\n"
+        "<![CDATA[<html> <html/>]]>\n"
+        "</description>";
+
+    xtree::Document document(docstr);
+
+    xtree::Document expected;
+
+    auto root = xtree::Elem("description");
+    root.add_node(xtree::Text("<html> <html/>"));
+    expected.set_root(std::move(root));
+
+    if (document != expected) {
+        std::cerr << "Failed test_begin_cdata\nExpected: \n" <<
+                expected.serialize() << "\nGot: \n" << document.serialize() << "\n" << std::endl;
     }
 }
 
@@ -347,7 +367,7 @@ void test_complex_doc() {
 
     if (document != expected) {
         std::cerr << "Failed test_complex_doc\nExpected: \n" <<
-                  expected.serialize() << "\nbut got \n" << document.serialize() << "\n" << std::endl;
+                  expected.serialize() << "\nGot: \n" << document.serialize() << "\n" << std::endl;
     }
 }
 
@@ -385,7 +405,7 @@ void test_copy_assign() {
 
     if (expected != document2) {
         std::cerr << "Failed test_copy_assign\nExpected: \n" <<
-                  expected.serialize() << "\nbut got \n" << document1.serialize() << "\n" << std::endl;
+                  expected.serialize() << "\nGot: \n" << document1.serialize() << "\n" << std::endl;
     }
 }
 
@@ -414,7 +434,7 @@ void test_copy_assign_self() {
 
     if (expected != document) {
         std::cerr << "Failed test_copy_assign\nExpected: \n" <<
-                  expected.serialize() << "\nbut got \n" << document.serialize() << "\n" << std::endl;
+                  expected.serialize() << "\nGot: \n" << document.serialize() << "\n" << std::endl;
     }
 }
 
@@ -530,6 +550,7 @@ int main() {
         test_comment();
         test_unopened_tag();
         test_cdata();
+        test_begin_cdata();
         test_dtd();
         test_escseq();
         test_unclosed();

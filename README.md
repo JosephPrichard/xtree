@@ -29,7 +29,7 @@ Serialize a document into a string or file using `xtree::Document::serialize()` 
 auto str = document.serialize();
 
 std::ofstream ofs;
-ofs.open("doc.xml", std::ofstream::out | std::ofstream::trunc);
+ofs.open("gie_file.xml", std::ofstream::out | std::ofstream::trunc);
 ofs << document;
 ```
 
