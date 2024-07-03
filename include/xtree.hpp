@@ -12,384 +12,348 @@
 
 namespace xtree {
 
-    struct Attr {
-        std::string nm;
-        std::string val;
+struct Attr {
+    std::string name;
+    std::string value;
 
-        std::string& name() {
-            return nm;
+    friend bool operator==(const Attr& attr, const Attr& other) = default;
+};
+
+std::ostream& operator<<(std::ostream& os, const Attr& attr);
+
+struct Text {
+    std::string data;
+
+    std::string& contents() {
+        return data;
+    }
+
+    friend bool operator==(const Text& attr, const Text& other) = default;
+};
+
+std::ostream& operator<<(std::ostream& os, const Text& text);
+
+struct Decl {
+    std::string tag;
+    std::vector<Attr> attrs;
+
+    std::string& tagname() {
+        return tag;
+    }
+
+    std::vector<Attr>& attributes() {
+        return attrs;
+    }
+
+    Decl& add_attr(std::string&& name, std::string&& value) {
+        attrs.emplace_back(std::move(name), std::move(value));
+        return *this;
+    }
+
+    friend bool operator==(const Decl& decl, const Decl& other) = default;
+};
+
+std::ostream& operator<<(std::ostream& os, const Decl& decl);
+
+struct Comment {
+    std::string text;
+
+    friend bool operator==(const Comment& comment, const Comment& other) = default;
+};
+
+std::ostream& operator<<(std::ostream& os, const Comment& comment);
+
+struct DocType {
+    std::string text;
+
+    friend bool operator==(const DocType& dtd, const DocType& other) = default;
+};
+
+std::ostream& operator<<(std::ostream& os, const DocType& dtd);
+
+struct Elem;
+
+using NodeVariant = std::variant<Elem, Comment, Text>;
+
+using RootVariant = std::variant<Comment, Decl, DocType>;
+
+struct Node;
+
+bool operator==(const Node& node, const Node& other);
+
+struct Elem {
+    std::string tag;
+    std::vector<Attr> attributes;
+    std::vector<std::unique_ptr<Node>> children;
+
+    Elem() = default;
+
+    explicit Elem(std::string&& tag) noexcept : Elem(std::move(tag), {}, {}) {}
+
+    Elem(std::string&& tag, std::vector<Attr>&& attributes) noexcept
+        : Elem(Elem(std::move(tag), std::move(attributes), {})) {}
+
+    Elem(std::string&& tag, std::vector<Attr>&& attributes, std::vector<std::unique_ptr<Node>>&& children) noexcept
+        : tag(std::move(tag)), attributes(std::move(attributes)), children(std::move(children)) {}
+
+    Elem(const Elem& other) noexcept {
+        tag = other.tag;
+        attributes = other.attributes;
+        children.clear();
+        for (auto& child: other.children) {
+            children.emplace_back(std::make_unique<Node>(*child));
         }
+    }
 
-        std::string& value() {
-            return val;
-        }
+    Elem(Elem&&) = default;
 
-        friend std::ostream& operator<<(std::ostream& os, const Attr& attr);
+    Elem* select_elem(const std::string& ctag);
 
-        friend bool operator==(const Attr& attr, const Attr& other) = default;
-    };
+    Attr* select_attr(const std::string& attr_name);
 
-    struct Text {
-        std::string data;
+    Elem& expect_elem(const std::string& ctag);
 
-        friend std::ostream& operator<<(std::ostream& os, const Text& text);
+    Attr& select_attr_ex(const std::string& attr_name);
 
-        friend bool operator==(const Text& attr, const Text& other) = default;
-    };
+    std::vector<std::unique_ptr<Node>>::iterator begin() {
+        return children.begin();
+    }
 
-    struct Decl {
-        std::string tag;
-        std::vector<Attr> attrs;
+    std::vector<std::unique_ptr<Node>>::iterator end() {
+        return children.end();
+    }
 
-        std::string& tagname() {
-            return tag;
-        }
+    Elem& add_attr(std::string&& name, std::string&& value) {
+        attributes.emplace_back(std::move(name), std::move(value));
+        return *this;
+    }
 
-        std::vector<Attr>& attributes() {
-            return attrs;
-        }
-
-        Decl& add_attr(std::string&& name, std::string&& value) {
-            attrs.emplace_back(std::move(name), std::move(value));
-            return *this;
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const Decl& decl);
-
-        friend bool operator==(const Decl& decl, const Decl& other) = default;
-    };
-
-    struct Comment {
-        std::string text;
-
-        friend std::ostream& operator<<(std::ostream& os, const Comment& comment);
-
-        friend bool operator==(const Comment& comment, const Comment& other) = default;
-    };
-
-    struct DocType {
-        std::string text;
-
-        friend std::ostream& operator<<(std::ostream& os, const DocType& dtd);
-
-        friend bool operator==(const DocType& dtd, const DocType& other) = default;
-    };
-
-    struct Elem;
-
-    using NodeVariant = std::variant<Elem, Comment, Text>;
-
-    using RootVariant = std::variant<Comment, Decl, DocType>;
-
-    struct Node;
-
-    bool operator==(const Node& node, const Node& other);
-
-    struct Elem {
-        std::string tag;
-        std::vector<Attr> attrs;
-        std::vector<std::unique_ptr<Node>> child_nodes;
-
-        Elem() = default;
-
-        explicit Elem(std::string&& tag) noexcept : Elem(std::move(tag), {}, {}) {}
-
-        Elem(std::string&& tag, std::vector<Attr>&& attributes) noexcept
-            : Elem(Elem(std::move(tag), std::move(attributes), {})) {}
-
-        Elem(std::string&& tag, std::vector<Attr>&& attributes, std::vector<std::unique_ptr<Node>>&& children) noexcept
-            : tag(std::move(tag)), attrs(std::move(attributes)), child_nodes(std::move(children)) {}
-
-        Elem(const Elem& other) noexcept {
-            tag = other.tag;
-            attrs = other.attrs;
-            child_nodes.clear();
-            for (auto& child: other.child_nodes) {
-                child_nodes.emplace_back(std::make_unique<Node>(*child));
+    void remove_attr(const std::string& name) {
+        auto it = attributes.begin();
+        while (it != attributes.end()) {
+            if (it->name == name) {
+                it = attributes.erase(it);
+            } else {
+                it++;
             }
         }
+    }
 
-        Elem(Elem&&) = default;
+    Elem& add_node(NodeVariant&& node) {
+        children.emplace_back(std::make_unique<Node>(std::move(node)));
+        return *this;
+    }
 
-        Elem* select_elem(const std::string& ctag);
+    void remove_node(const std::string& tag);
 
-        Attr* select_attr(const std::string& attr_name);
-
-        Elem& select_elem_ex(const std::string& ctag);
-
-        Attr& select_attr_ex(const std::string& attr_name);
-
-        std::vector<std::unique_ptr<Node>>::iterator begin() {
-            return child_nodes.begin();
+    friend bool operator==(const Elem& elem, const Elem& other) {
+        if (elem.tag != other.tag || elem.attributes != other.attributes) {
+            return false;
         }
 
-        std::vector<std::unique_ptr<Node>>::iterator end() {
-            return child_nodes.end();
+        if (elem.children.size() != other.children.size()) {
+            return false;
         }
-
-        std::string& tagname() {
-            return tag;
+        for (size_t i = 0; i < elem.children.size(); i++) {
+            if (*elem.children[i] != *other.children[i])
+                return false;
         }
+        return true;
+    }
 
-        std::vector<Attr>& attributes() {
-            return attrs;
-        }
+    Elem& operator=(const Elem& other);
+};
 
-        std::vector<std::unique_ptr<Node>>& children() {
-            return child_nodes;
-        }
+std::ostream& operator<<(std::ostream& os, const Elem& elem);
 
-        Elem& add_attr(std::string&& name, std::string&& value) {
-            attrs.emplace_back(std::move(name), std::move(value));
-            return *this;
-        }
+struct NodeWalkException : public std::runtime_error {
+    explicit NodeWalkException(std::string&& m) : std::runtime_error(m) {}
+};
 
-        void remove_attr(const std::string& name) {
-            auto it = attrs.begin();
-            while (it != attrs.end()) {
-                if (it->nm == name) {
-                    it = attrs.erase(it);
-                } else {
-                    it++;
-                }
+struct Node {
+    NodeVariant data;
+
+    bool is_comment() const {
+        return holds_alternative<Comment>(data);
+    }
+
+    bool is_text() const {
+        return holds_alternative<Text>(data);
+    }
+
+    bool is_elem() const {
+        return holds_alternative<Elem>(data);
+    }
+
+    Comment& as_comment() {
+        if (auto node = get_if<Comment>(&data))
+            return *node;
+        throw NodeWalkException("node is not a comment type node");
+    }
+
+    Text& as_text() {
+        if (auto node = get_if<Text>(&data))
+            return *node;
+        throw NodeWalkException("node is not a text type node");
+    }
+
+    Elem& as_elem() {
+        if (auto elem = get_if<Elem>(&data))
+            return *elem;
+        throw NodeWalkException("node is not an elem type node");
+    }
+
+    Elem* find_element(const char* tag) {
+        if (auto elem = get_if<Elem>(&data))
+            return elem->select_elem(tag);
+        return nullptr;
+    }
+
+    friend bool operator==(const Node& node, const Node& other) {
+        return node.data == other.data;
+    }
+};
+
+std::ostream& operator<<(std::ostream& os, const Node& node);
+
+struct RootNode {
+    RootVariant data;
+
+    bool is_comment() const {
+        return std::holds_alternative<Comment>(data);
+    }
+
+    bool is_decl() const {
+        return std::holds_alternative<Decl>(data);
+    }
+
+    bool is_dtd() const {
+        return std::holds_alternative<DocType>(data);
+    }
+
+    Comment& as_comment() {
+        if (auto node = std::get_if<Comment>(&data))
+            return *node;
+        throw NodeWalkException("node is not a comment type node");
+    }
+
+    Decl& as_decl() {
+        if (auto node = std::get_if<Decl>(&data))
+            return *node;
+        throw NodeWalkException("node is not a decl type node");
+    }
+
+    DocType& as_dtd() {
+        if (auto node = std::get_if<DocType>(&data))
+            return *node;
+        throw NodeWalkException("node is not a decl type node");
+    }
+
+    friend bool operator==(const RootNode& node, const RootNode& other) {
+        return node.data == other.data;
+    }
+};
+
+std::ostream& operator<<(std::ostream& os, const RootNode& node);
+
+struct Document {
+    std::vector<std::unique_ptr<RootNode>> children;
+    std::unique_ptr<Elem> root;
+
+    Document() = default;
+
+    explicit Document(const std::string& docstr);
+
+    static bool RECURSIVE_PARSER;
+
+    Decl* select_decl(const std::string& tag) {
+        for (auto& child: children)
+            if (auto decl = get_if<Decl>(&child->data))
+                if (decl->tag == tag)
+                    return decl;
+        return nullptr;
+    }
+
+    void remove_decl(const std::string& rtag) {
+        auto it = children.begin();
+        while (it != children.end()) {
+            if ((*it)->is_decl() && (*it)->as_decl().tag == rtag) {
+                it = children.erase(it);
+            } else {
+                it++;
             }
         }
+    }
 
-        Elem& add_node(NodeVariant&& node) {
-            child_nodes.emplace_back(std::make_unique<Node>(std::move(node)));
-            return *this;
+    std::vector<std::unique_ptr<RootNode>>::iterator begin() {
+        return children.begin();
+    }
+
+    std::vector<std::unique_ptr<RootNode>>::iterator end() {
+        return children.end();
+    }
+
+    Document& add_node(RootVariant&& node) {
+        children.emplace_back(std::make_unique<RootNode>(std::move(node)));
+        return *this;
+    }
+
+    Elem& expect_root() {
+        if (root != nullptr) {
+            return *root;
         }
+        throw NodeWalkException("Document does not contain a root element");
+    }
 
-        std::vector<std::string> child_tags();
+    Document& add_root(Elem elem) {
+        root = std::make_unique<Elem>(std::move(elem));
+        return *this;
+    }
 
-        void remove_node(const std::string& tag);
+    std::string serialize() const;
 
-        friend std::ostream& operator<<(std::ostream& os, const Elem& elem);
+    friend std::ostream& operator<<(std::ostream& os, const Document& document) {
+        for (auto& node: document.children)
+            os << *node;
+        os << *document.root;
+        return os;
+    }
 
-        friend bool operator==(const Elem& elem, const Elem& other) {
-            if (elem.tag != other.tag || elem.attrs != other.attrs) {
+    friend bool operator==(const Document& document, const Document& other) {
+        if (document.root != nullptr && other.root != nullptr) {
+            if (*document.root != *other.root) {
                 return false;
             }
-
-            if (elem.child_nodes.size() != other.child_nodes.size()) {
+        } else if (document.root != nullptr || other.root != nullptr) {
+            return false;
+        }
+        if (document.children.size() != other.children.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < document.children.size(); i++) {
+            if (*document.children[i] != *other.children[i])
                 return false;
-            }
-            for (int i = 0; i < elem.child_nodes.size(); i++) {
-                if (*elem.child_nodes[i] != *other.child_nodes[i])
-                    return false;
-            }
-            return true;
         }
+        return true;
+    }
+};
 
-        Elem& operator=(const Elem& other);
-    };
+struct DocumentWalker {
+    virtual void on_elem(Elem& elem) {};
 
-    struct NodeWalkException : public std::exception {
-        std::string message;
+    virtual void on_comment(Comment& comment) {};
 
-        explicit NodeWalkException(std::string&& m) : message(std::move(m)) {}
+    virtual void on_dtd(DocType& dtd) {};
 
-        const char* what() const noexcept override {
-            return message.c_str();
-        }
-    };
+    virtual void on_decl(Decl& decl) {};
 
-    struct Node {
-        NodeVariant data;
+    virtual void on_text(Text& text) {};
 
-        bool is_comment() const {
-            return holds_alternative<Comment>(data);
-        }
+    void walk_document(Document& document);
+};
 
-        bool is_text() const {
-            return holds_alternative<Text>(data);
-        }
-
-        bool is_elem() const {
-            return holds_alternative<Elem>(data);
-        }
-
-        Comment& as_comment() {
-            if (auto node = get_if<Comment>(&data))
-                return *node;
-            throw NodeWalkException("node is not a comment type node");
-        }
-
-        Text& as_text() {
-            if (auto node = get_if<Text>(&data))
-                return *node;
-            throw NodeWalkException("node is not a text type node");
-        }
-
-        Elem& as_elem() {
-            if (auto elem = get_if<Elem>(&data))
-                return *elem;
-            throw NodeWalkException("node is not an elem type node");
-        }
-
-        Elem* find_element(const char* tag) {
-            if (auto elem = get_if<Elem>(&data))
-                return elem->select_elem(tag);
-            return nullptr;
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const Node& node);
-
-        friend bool operator==(const Node& node, const Node& other) {
-            return node.data == other.data;
-        }
-    };
-
-    struct RootNode {
-        RootVariant data;
-
-        bool is_comment() const {
-            return std::holds_alternative<Comment>(data);
-        }
-
-        bool is_decl() const {
-            return std::holds_alternative<Decl>(data);
-        }
-
-        bool is_dtd() const {
-            return std::holds_alternative<DocType>(data);
-        }
-
-        Comment& as_comment() {
-            if (auto node = std::get_if<Comment>(&data))
-                return *node;
-            throw NodeWalkException("node is not a comment type node");
-        }
-
-        Decl& as_decl() {
-            if (auto node = std::get_if<Decl>(&data))
-                return *node;
-            throw NodeWalkException("node is not a decl type node");
-        }
-
-        DocType& as_dtd() {
-            if (auto node = std::get_if<DocType>(&data))
-                return *node;
-            throw NodeWalkException("node is not a decl type node");
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const RootNode& node);
-
-        friend bool operator==(const RootNode& node, const RootNode& other) {
-            return node.data == other.data;
-        }
-    };
-
-    struct Document {
-        std::vector<std::unique_ptr<RootNode>> child_nodes;
-        std::unique_ptr<Elem> root;
-
-        Document() = default;
-
-        explicit Document(const std::string& docstr);
-
-        static bool RECURSIVE_PARSER;
-
-        Decl* select_decl(const std::string& tag) {
-            for (auto& child: child_nodes)
-                if (auto decl = get_if<Decl>(&child->data))
-                    if (decl->tag == tag)
-                        return decl;
-            return nullptr;
-        }
-
-        void remove_decl(const std::string& rtag) {
-            auto it = child_nodes.begin();
-            while (it != child_nodes.end()) {
-                if ((*it)->is_decl() && (*it)->as_decl().tag == rtag) {
-                    it = child_nodes.erase(it);
-                } else {
-                    it++;
-                }
-            }
-        }
-
-        std::vector<std::unique_ptr<RootNode>>::iterator begin() {
-            return child_nodes.begin();
-        }
-
-        std::vector<std::unique_ptr<RootNode>>::iterator end() {
-            return child_nodes.end();
-        }
-
-        Document& add_node(RootVariant&& node) {
-            child_nodes.emplace_back(std::make_unique<RootNode>(std::move(node)));
-            return *this;
-        }
-
-        std::vector<std::unique_ptr<RootNode>>& children() {
-            return child_nodes;
-        }
-
-        std::unique_ptr<Elem>& root_elem() {
-            return root;
-        }
-
-        Elem& root_elem_ex() {
-            if (root != nullptr) {
-                return *root;
-            }
-            throw NodeWalkException("Document does not contain a root element");
-        }
-
-        Document& set_root(Elem elem) {
-            root = std::make_unique<Elem>(std::move(elem));
-            return *this;
-        }
-
-        std::string serialize() const;
-
-        friend std::ostream& operator<<(std::ostream& os, const Document& document) {
-            for (auto& node: document.child_nodes)
-                os << *node;
-            os << *document.root;
-            return os;
-        }
-
-        friend bool operator==(const Document& document, const Document& other) {
-            if (document.root != nullptr && other.root != nullptr) {
-                if (*document.root != *other.root) {
-                    return false;
-                }
-            } else if (document.root != nullptr || other.root != nullptr) {
-                return false;
-            }
-            if (document.child_nodes.size() != other.child_nodes.size()) {
-                return false;
-            }
-            for (int i = 0; i < document.child_nodes.size(); i++) {
-                if (*document.child_nodes[i] != *other.child_nodes[i])
-                    return false;
-            }
-            return true;
-        }
-    };
-
-    struct DocumentWalker {
-        virtual void on_elem(Elem& elem) {};
-
-        virtual void on_comment(Comment& comment) {};
-
-        virtual void on_dtd(DocType& dtd) {};
-
-        virtual void on_decl(Decl& decl) {};
-
-        virtual void on_text(Text& text) {};
-
-        void walk_document(Document& document);
-    };
-
-    struct TokenException : public std::runtime_error {
-        int row;
-        int col;
-
-        explicit TokenException(std::string& m, int row, int col) : std::runtime_error(m), row(row), col(col) {
-        }
-    };
+struct ParseException : public std::runtime_error {
+    explicit ParseException(std::string& m) : std::runtime_error(m) {}
+};
 
 }

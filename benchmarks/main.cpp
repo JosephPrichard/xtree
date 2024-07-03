@@ -13,10 +13,10 @@ void create_benchmark_file(const std::string& file_path, int node_count) {
     std::ofstream file(file_path);
 
     xtree::Document document;
-    document.set_root(xtree::Elem("Root"));
+    document.add_root(xtree::Elem("Root"));
 
     std::stack<xtree::Elem*> stack;
-    stack.push(document.root_elem().get());
+    stack.push(document.root.get());
 
     for (int i = 0; i < node_count; i++) {
         auto top = stack.top();
@@ -57,7 +57,7 @@ void create_benchmark_file(const std::string& file_path, int node_count) {
             break;
         }
 
-        auto& back = top->children().back();
+        auto& back = top->children.back();
         if (!back->is_elem()) {
             continue;
         }
@@ -86,10 +86,10 @@ struct StatWalker : xtree::DocumentWalker {
     
     void on_elem(xtree::Elem& elem) override {
         memory += sizeof(elem) + elem.tag.capacity();
-        for (auto& attr : elem.attributes()) {
-            memory += sizeof(attr) + attr.name().capacity() + attr.value().capacity();
+        for (auto& attr : elem.attributes) {
+            memory += sizeof(attr) + attr.name.capacity() + attr.value.capacity();
         }
-        memory += elem.children().size() * sizeof(elem.children()[0]);
+        memory += elem.children.size() * sizeof(elem.children[0]);
         nodes++;
     }
 
@@ -101,7 +101,7 @@ struct StatWalker : xtree::DocumentWalker {
     void on_decl(xtree::Decl& decl) override {
         memory += sizeof(decl) + decl.tag.capacity();
         for (auto& attr : decl.attributes()) {
-            memory += sizeof(attr) + attr.name().capacity() + attr.value().capacity();
+            memory += sizeof(attr) + attr.name.capacity() + attr.value.capacity();
         }
         nodes++;
     }

@@ -22,7 +22,7 @@ void test_comment() {
     auto root = xtree::Elem("Test", {{"TestId", "0001"}, {"TestType", "CMD"}})
         .add_node(xtree::Comment("This is a comment"))
         .add_node(xtree::Elem("Name"));
-    expected.set_root(std::move(root));
+    expected.add_root(std::move(root));
 
     if (expected != document) {
         std::cerr << "Failed test_small_document\nExpected: \n" << expected.serialize() <<
@@ -41,7 +41,7 @@ void test_dashed_comment() {
     xtree::Document expected;
     auto root = xtree::Elem("Tests");
     root.add_node(xtree::Comment("This is -a- comment"));
-    expected.set_root(std::move(root));
+    expected.add_root(std::move(root));
 
     if (expected != document) {
         std::cerr << "Failed test_comment_document\nExpected: \n" <<
@@ -60,7 +60,7 @@ void test_unopened_tag() {
     xtree::Document expected;
     auto root = xtree::Elem("Test");
     root.add_node(xtree::Text("--> /> ?> >"));
-    expected.set_root(std::move(root));
+    expected.add_root(std::move(root));
 
     if (expected != document) {
         std::cerr << "Failed test_small_document\nExpected: \n" << expected.serialize() <<
@@ -77,7 +77,7 @@ void test_escseq() {
     auto root = xtree::Elem("Test")
         .add_attr("name", "\" ' < > &")
         .add_node(xtree::Text("\" ' < > &"));
-    expected.set_root(std::move(root));
+    expected.add_root(std::move(root));
 
     if (expected != document) {
         std::cerr << "Failed test_escseq\nExpected: \n" << expected.serialize() <<
@@ -103,7 +103,7 @@ void test_dtd() {
     xtree::Document expected;
     expected.add_node(xtree::DocType("hello testing123 hello"));
     auto root = xtree::Elem("Test");
-    expected.set_root(std::move(root));
+    expected.add_root(std::move(root));
 
     if (expected != document) {
         std::cerr << "Failed test_small_document\nExpected: \n" << expected.serialize() <<
@@ -126,7 +126,7 @@ void test_cdata() {
     auto inner = xtree::Elem("Name");
     inner.add_node(xtree::Text("Testing Xml Text <Txt> </Txt>"));
     root.add_node(std::move(inner));
-    expected.set_root(std::move(root));
+    expected.add_root(std::move(root));
 
     if (expected != document) {
         std::cerr << "Failed test_small_document\nExpected: \n" << expected.serialize() <<
@@ -142,7 +142,7 @@ void test_unclosed() {
     try {
         xtree::Document document(docstr);
     } catch (std::exception& ex) {
-        auto expected_msg = "reached the end of the stream while parsing at row 1 at col 43";
+        auto expected_msg = "reached the end of the stream while parsing at row 1 and col 43";
         if (strcmp(ex.what(), expected_msg) != 0) {
             std::cerr << "Expected message to read\n" << expected_msg << "\nGot: \n" << ex.what() << "\n" << std::endl;
         }
@@ -157,7 +157,7 @@ void test_unequal_tags() {
     try {
         xtree::Document document(docstr);
     } catch (std::exception& ex) {
-        auto expected_msg = "encountered invalid token in stream: 'Test1' but expected closing tag 'Test' at row 1 at col 23";
+        auto expected_msg = "encountered invalid token in stream: 'Test1' but expected closing tag 'Test' at row 1 and col 23";
         if (strcmp(ex.what(), expected_msg) != 0) {
             std::cerr << "Expected message to read\n" << expected_msg << "\nGot: \n" << ex.what() << "\n" << std::endl;
         }
@@ -171,7 +171,7 @@ void test_multiple_roots() {
     try {
         xtree::Document document(docstr);
     } catch (std::exception& ex) {
-        auto expected_msg = "expected an xml document to only have a single root node at row 1 at col 17";
+        auto expected_msg = "expected an xml document to only have a single root node at row 1 and col 17";
         if (strcmp(ex.what(), expected_msg) != 0) {
             std::cerr << "Expected message to read\n" << expected_msg << "\nGot: \n" << ex.what() << "\n" << std::endl;
         }
@@ -190,7 +190,7 @@ void test_copy_tree() {
     root.add_node(xtree::Elem("Name"));
 
     xtree::Document document;
-    document.set_root(std::move(root));
+    document.add_root(std::move(root));
 
     std::string expected_docstr =
         "<Test TestId=\"0001\"> "
@@ -218,7 +218,7 @@ void test_decl() {
     auto root = xtree::Elem("Test", {{"TestId", "0001"}, {"TestType", "CMD"}});
     root.add_node(xtree::Elem("Name"));
     expected.add_node(std::move(decl));
-    expected.set_root(std::move(root));
+    expected.add_root(std::move(root));
 
     if (expected != document) {
         std::cerr << "Failed test_decl\nExpected: \n" << expected.serialize() <<
@@ -235,7 +235,16 @@ std::string vecstr_to_string(std::vector<std::string>& vecstr) {
     return str;
 }
 
-void test_remove_attr() {
+std::string attrs_to_string(std::vector<xtree::Attr>& attrs) {
+    std::string str = "{ ";
+    for (auto& attr: attrs) {
+        str += "{" + attr.name + " " + attr.value + "} ";
+    }
+    str += "}";
+    return str;
+}
+
+void test_remove_nodes() {
     xtree::Document document;
 
     auto root = xtree::Elem("Test", {{"TestId", "0001"}, {"TestType", "CMD"}});
@@ -243,13 +252,20 @@ void test_remove_attr() {
     root.add_node(xtree::Elem("Name"));
 
     document.add_node(xtree::Decl("xml", {{"version", "1.0"}}));
-    document.set_root(std::move(root));
+    document.add_root(std::move(root));
 
     document.remove_decl("xml");
-    document.root_elem()->remove_node("Name");
-    document.root_elem()->remove_attr("TestId");
+    document.root->remove_node("Name");
+    document.root->remove_attr("TestId");
 
-    auto tags = document.root_elem()->child_tags();
+    std::vector<std::string> tags;
+    for (auto& node : *document.root) {
+        if (node->is_elem()) {
+            tags.push_back(node->as_elem().tag);
+        }    
+    }
+
+    auto& attrs = document.root->attributes;
 
     std::vector<std::string> expected_tags = {"Name1"};
     if (tags != expected_tags) {
@@ -257,10 +273,10 @@ void test_remove_attr() {
                   "\nGot: \n" << vecstr_to_string(tags) << "\n" << std::endl;
     }
 
-    std::vector<std::string> attr = {{"TestId", "0001"}, {"TestType", "CMD"}};
-    if (tags != expected_tags) {
-        std::cerr << "Failed test_decl\nExpected: \n" << vecstr_to_string(expected_tags) <<
-                  "\nGot: \n" << vecstr_to_string(tags) << "\n" << std::endl;
+    std::vector<xtree::Attr> expected_attrs = {{"TestType", "CMD"}};
+    if (attrs != expected_attrs) {
+        std::cerr << "Failed test_decl\nExpected: \n" << attrs_to_string(expected_attrs) <<
+                  "\nGot: \n" << attrs_to_string(attrs) << "\n" << std::endl;
     }
 }
 
@@ -294,7 +310,7 @@ void test_larger_doc() {
     elem.add_node(std::move(elem1));
     root.add_node(std::move(elem));
 
-    expected.set_root(std::move(root));
+    expected.add_root(std::move(root));
 
     if (document != expected) {
         std::cerr << "Failed test_larger_doc\nExpected: \n" <<
@@ -314,7 +330,7 @@ void test_begin_cdata() {
 
     auto root = xtree::Elem("description");
     root.add_node(xtree::Text("<html> <html/>"));
-    expected.set_root(std::move(root));
+    expected.add_root(std::move(root));
 
     if (document != expected) {
         std::cerr << "Failed test_begin_cdata\nExpected: \n" <<
@@ -363,7 +379,7 @@ void test_complex_doc() {
     root.add_node(std::move(elem1));
     root.add_node(std::move(elem2));
 
-    expected.set_root(std::move(root));
+    expected.add_root(std::move(root));
 
     if (document != expected) {
         std::cerr << "Failed test_complex_doc\nExpected: \n" <<
@@ -379,16 +395,16 @@ void test_copy_assign() {
             .add_node(xtree::Text("Three.One")))
         .add_node(xtree::Elem("Four")
             .add_node(xtree::Elem("Five")));
-    document1.set_root(xtree::Elem("One").add_node(root1));
+    document1.add_root(xtree::Elem("One").add_node(root1));
 
     xtree::Document document2;
     auto root2 = xtree::Elem("Two")
         .add_node(xtree::Text("Two.One"));
-    document2.set_root(xtree::Elem("One").add_node(root2));
+    document2.add_root(xtree::Elem("One").add_node(root2));
 
-    auto& root_ref1 = document1.root_elem_ex().select_elem_ex("Two");
-    auto& roof_ref2 = document2.root_elem_ex().select_elem_ex("Two");
-    auto& elem_ref1 = root_ref1.select_elem_ex("Four").select_elem_ex("Five");
+    auto& root_ref1 = document1.expect_root().expect_elem("Two");
+    auto& roof_ref2 = document2.expect_root().expect_elem("Two");
+    auto& elem_ref1 = root_ref1.expect_elem("Four").expect_elem("Five");
 
     elem_ref1 = roof_ref2;
     roof_ref2 = root_ref1;
@@ -401,7 +417,7 @@ void test_copy_assign() {
         .add_node(xtree::Elem("Four")
             .add_node(xtree::Elem("Two")
                 .add_node(xtree::Text("Two.One"))));
-    expected.set_root(xtree::Elem("One").add_node(root3));
+    expected.add_root(xtree::Elem("One").add_node(root3));
 
     if (expected != document2) {
         std::cerr << "Failed test_copy_assign\nExpected: \n" <<
@@ -417,10 +433,10 @@ void test_copy_assign_self() {
             .add_node(xtree::Text("Three.One")))
         .add_node(xtree::Elem("Four")
             .add_node(xtree::Elem("Five")));
-    document.set_root(xtree::Elem("One").add_node(root));
+    document.add_root(xtree::Elem("One").add_node(root));
 
-    auto& elem_ref = document.root_elem_ex().select_elem_ex("Two");
-    auto& roof_ref = document.root_elem_ex();
+    auto& elem_ref = document.expect_root().expect_elem("Two");
+    auto& roof_ref = document.expect_root();
     roof_ref = elem_ref;
 
     xtree::Document expected;
@@ -430,7 +446,7 @@ void test_copy_assign_self() {
             .add_node(xtree::Text("Three.One")))
         .add_node(xtree::Elem("Four")
             .add_node(xtree::Elem("Five")));
-    expected.set_root(root2);
+    expected.add_root(root2);
 
     if (expected != document) {
         std::cerr << "Failed test_copy_assign\nExpected: \n" <<
@@ -454,17 +470,17 @@ void test_walk_doc() {
 
     xtree::Document document(docstr);
 
-    auto attr_value = document.root_elem()->select_attr("Id")->value();
+    auto& attr_value = document.root->select_attr("Id")->value;
     if (attr_value != "123") {
         std::cerr << "Expected '123' for attr but got " << attr_value << std::endl;
     }
 
-    auto tag = document.root_elem()->select_elem("Test")->tagname();
+    auto& tag = document.root->select_elem("Test")->tag;
     if (tag != "Test") {
         std::cerr << "Expected 'Test' for tag but got " << attr_value << std::endl;
     }
 
-    auto attr2 = document.root_elem()->select_attr("Nope");
+    auto attr2 = document.root->select_attr("Nope");
     if (attr2 != nullptr) {
         std::cerr << "Expected nullptr for attr but got " << attr_value << std::endl;
     }
@@ -498,7 +514,7 @@ void test_walk_doc_root() {
 
     std::vector tags = {"Test", "xsd:Test"};
     int i = 0;
-    for (auto& child: *document.root_elem()) {
+    for (auto& child: *document.root) {
         if (!child->is_elem()) {
             std::cerr << "Expected nodes should be elem nodes" << std::endl;
         }
@@ -561,7 +577,7 @@ int main() {
         test_complex_doc();
         test_dashed_comment();
         test_copy_tree();
-        test_remove_attr();
+        test_remove_nodes();
         test_walk_doc();
         test_walk_doc_root();
         test_walk_tree();
