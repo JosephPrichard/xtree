@@ -36,3 +36,6 @@ cmake-build-debug
 .idea
 
 .vscode
+
+# too big to commit to github
+/benchmarks/input/random_dump.xml

@@ -13,7 +13,7 @@ void create_benchmark_file(const std::string& file_path, int node_count) {
     std::ofstream file(file_path);
 
     xtree::Document document;
-    document.add_root(xtree::Elem("Root"));
+    document.add_root(std::move(xtree::Elem("Root")));
 
     std::stack<xtree::Elem*> stack;
     stack.push(document.root.get());
@@ -31,7 +31,7 @@ void create_benchmark_file(const std::string& file_path, int node_count) {
                 elem.tag += rand_alpha();
             }
 
-            top->add_node(elem);
+            top->add_node(std::move(elem));
             break;
         }
         case 1: {
@@ -42,18 +42,18 @@ void create_benchmark_file(const std::string& file_path, int node_count) {
                 text.data += rand_alpha();
             }
 
-            top->add_node(text);
+            top->add_node(std::move(text));
             break;
         }
         default:
-            xtree::Comment comment;
+            xtree::Cmnt cmnt;
 
             auto length = rand() % 50 + 10;
             for (int j = 0; j < length; j++) {
-                comment.text += rand_alpha();
+                cmnt.text += rand_alpha();
             }
 
-            top->add_node(comment);
+            top->add_node(std::move(cmnt));
             break;
         }
 
@@ -93,20 +93,20 @@ struct StatWalker : xtree::DocumentWalker {
         nodes++;
     }
 
-    void on_comment(xtree::Comment& comment) override {
-        memory += sizeof(comment) + comment.text.capacity();
+    void on_cmnt(xtree::Cmnt& cmnt) override {
+        memory += sizeof(cmnt) + cmnt.text.capacity();
         nodes++;
     }
 
     void on_decl(xtree::Decl& decl) override {
         memory += sizeof(decl) + decl.tag.capacity();
-        for (auto& attr : decl.attributes()) {
+        for (auto& attr : decl.attrs) {
             memory += sizeof(attr) + attr.name.capacity() + attr.value.capacity();
         }
         nodes++;
     }
 
-    void on_dtd(xtree::DocType& dtd) override {
+    void on_dtd(xtree::Dtd& dtd) override {
         memory += sizeof(dtd) + dtd.text.capacity();
         nodes++;
     }
@@ -117,21 +117,27 @@ struct StatWalker : xtree::DocumentWalker {
     }
 };
 
-void benchmark_from_file(const std::string& file_path, int count) {
-    std::ifstream file(file_path);
+std::string string_from_file(const std::string& file_path) {
     std::string docstr;
 
-    if (file.is_open()) {
+    std::ifstream temp_file(file_path);
+    if (temp_file.is_open()) {
         std::string line;
-        while (std::getline(file, line)) {
+        while (std::getline(temp_file, line)) {
             docstr += line + "\n";
         }
-        file.close();
+        temp_file.close();
     }
     else {
         std::cerr << "Failed to read test file: " << file_path << std::endl;
         exit(1);
     }
+
+    return docstr;
+}
+
+void benchmark_from_file(const std::string& file_path, int count, bool from_mem) {
+    std::string str = string_from_file(file_path);
 
     double eteTime = 0.0;
     auto start = std::chrono::steady_clock::now();
@@ -139,15 +145,11 @@ void benchmark_from_file(const std::string& file_path, int count) {
     StatWalker walker;
 
     for (int i = 0; i < count; i++) {
-        xtree::Document document(docstr);
-
-        auto start = std::chrono::steady_clock::now();
+        auto document = from_mem
+            ? xtree::Document::from_string(str) 
+            : xtree::Document::from_file(file_path);
 
         walker.walk_document(document);
-    
-        // exclude the time it takes to walk the document for statistics from the end to end time
-        auto stop = std::chrono::steady_clock::now();
-        eteTime -= std::chrono::duration<double, std::milli>(stop - start).count();;
     }
 
     auto stop = std::chrono::steady_clock::now();
@@ -155,44 +157,45 @@ void benchmark_from_file(const std::string& file_path, int count) {
 
     std::cout
         << std::setw(40) << file_path
-        << std::setw(20) << std::to_string(count) + " runs"
-        << std::setw(20) << std::to_string(docstr.size()) + " bytes"
-        << std::setw(15) << to_rounded_string(eteTime) + " ms" 
+        << std::setw(10) << (from_mem ? "Memory" : "File")
+        << std::setw(15) << std::to_string(count) + " runs"
+        << std::setw(20) << to_rounded_string(str.size() / 1e3) + " kb"
+        << std::setw(20) << to_rounded_string(eteTime) + " ms" 
         << std::setw(20) << to_rounded_string(eteTime / count) + " ms/file"
-        << std::setw(25) << to_rounded_string((double) docstr.size() * count / eteTime) + " bytes/ms"
-        << std::setw(25) << std::to_string(walker.memory / count) + " bytes/file"
-        << std::setw(20) << std::to_string(walker.nodes / count) + " nodes/file"
+        << std::setw(15) << to_rounded_string(((double) str.size() * (double) count / 1e6) / (eteTime / 1e3)) + " mb/s"
+        << std::setw(15) << to_rounded_string(walker.memory / 1e3) + " kb"
+        << std::setw(15) << std::to_string(walker.nodes) + " nodes"
         << std::endl;
 }
 
 int main() {
-    xtree::Document::RECURSIVE_PARSER = false;
-
     std::cout 
         << std::setw(40) << "File path" 
-        << std::setw(20) << "Runs count"
+        << std::setw(10) << "Mode"
+        << std::setw(15) << "Runs count"
         << std::setw(20) << "File size"
-        << std::setw(15) << "Total time"
+        << std::setw(20) << "Total time"
         << std::setw(20) << "Average time"
-        << std::setw(25) << "Throughput"
-        << std::setw(25) << "Allocated"
-        << std::setw(20) << "Node count"
+        << std::setw(15) << "Throughput"
+        << std::setw(15) << "Allocated"
+        << std::setw(15) << "Node count"
         << std::endl;
 
     try {
-        benchmark_from_file("../input/employee_records.xml", 100);
-        benchmark_from_file("../input/plant_catalog.xml", 100);
-        benchmark_from_file("../input/books_catalog.xml", 1000);
-        benchmark_from_file("../input/employee_hierarchy.xml", 1000);
-        benchmark_from_file("../input/book_store.xml", 1000);
+        benchmark_from_file("../input/employee_records.xml", 100, false);
+        benchmark_from_file("../input/plant_catalog.xml", 100, false);
+        benchmark_from_file("../input/books_catalog.xml", 1000, true);
+        benchmark_from_file("../input/employee_hierarchy.xml", 1000, true);
+        benchmark_from_file("../input/book_store.xml", 1000, true);
 
-        benchmark_from_file("../input/gie_file.xml", 10);
-        benchmark_from_file("../input/gie_file2.xml", 10);
-        // benchmark_from_file("../input/kml_manager_export_waypoints.xml", 10);
-        // benchmark_from_file("../input/kml_manager_export.xml", 10);
+        benchmark_from_file("../input/gie_file.xml", 10, true);
+        benchmark_from_file("../input/gie_file2.xml", 10, true);
+        // benchmark_from_file("../input/kml_manager_export_waypoints.xml", 10, true);
+        // benchmark_from_file("../input/kml_manager_export.xml", 10, true);
 
-        create_benchmark_file("../input/random_dump.xml", 1000000);
-        benchmark_from_file("../input/random_dump.xml", 1);
+        create_benchmark_file("../input/random_dump.xml", 2000000);
+        benchmark_from_file("../input/random_dump.xml", 1, false);
+        benchmark_from_file("../input/random_dump.xml", 1, true);
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
     }

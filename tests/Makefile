@@ -1,4 +1,4 @@
-CXXFLAGS = -Iinclude -Wall -std=c++20
+CXXFLAGS = -Iinclude -Wall -std=c++20 -Wno-deprecated
 
 EXEC = main
 

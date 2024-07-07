@@ -9,12 +9,29 @@
 #include <memory>
 #include <iosfwd>
 #include <cstring>
+#include <optional>
 
 namespace xtree {
+
+#define DEBUG_XTREE_HD false
 
 struct Attr {
     std::string name;
     std::string value;
+
+#if DEBUG_XTREE_HD
+    Attr(Attr&&) = default;
+
+    Attr(const Attr& other) : name(other.name), value(other.value) {
+        printf("Copied attr: %s\n", name.c_str());
+    }
+
+    Attr() = default;
+
+    Attr(std::string&& name, std::string&& value) : name(std::move(name)), value(std::move(value)) {}
+
+    Attr& operator=(const Attr&) = default;
+#endif
 
     friend bool operator==(const Attr& attr, const Attr& other) = default;
 };
@@ -24,11 +41,21 @@ std::ostream& operator<<(std::ostream& os, const Attr& attr);
 struct Text {
     std::string data;
 
-    std::string& contents() {
-        return data;
+#if DEBUG_XTREE_HD
+    Text(Text&&) = default;
+
+    Text(const Text& other) : data(other.data) {
+        printf("Copied text: %s\n", data.c_str());
     }
 
-    friend bool operator==(const Text& attr, const Text& other) = default;
+    Text() = default;
+
+    explicit Text(std::string&& data) : data(std::move(data)) {}
+
+    Text& operator=(const Text&) = default;
+#endif
+
+    friend bool operator==(const Text& lhs, const Text& rhs) = default;
 };
 
 std::ostream& operator<<(std::ostream& os, const Text& text);
@@ -37,13 +64,21 @@ struct Decl {
     std::string tag;
     std::vector<Attr> attrs;
 
-    std::string& tagname() {
-        return tag;
+#if DEBUG_XTREE_HD
+    Decl(Decl&&) = default;
+
+    Decl(const Decl& other) : tag(other.tag), attrs(other.attrs) {
+        printf("Copied decl: %s\n", tag.c_str());
     }
 
-    std::vector<Attr>& attributes() {
-        return attrs;
-    }
+    Decl() = default;
+
+    explicit Decl(std::string&& tag) : tag(std::move(tag)) {}
+
+    Decl(std::string&& tag, std::vector<Attr>&& attrs) : tag(std::move(tag)), attrs(std::move(attrs)) {}
+
+    Decl& operator=(const Decl&) = default;
+#endif
 
     Decl& add_attr(std::string&& name, std::string&& value) {
         attrs.emplace_back(std::move(name), std::move(value));
@@ -55,27 +90,55 @@ struct Decl {
 
 std::ostream& operator<<(std::ostream& os, const Decl& decl);
 
-struct Comment {
+struct Cmnt {
     std::string text;
 
-    friend bool operator==(const Comment& comment, const Comment& other) = default;
+#if DEBUG_XTREE_HD
+    Cmnt(Cmnt&&) = default;
+
+    Cmnt(const Cmnt& other) : text(other.text) {
+        printf("Copied comment: %s\n", text.c_str());
+    }
+
+    Cmnt() = default;
+
+    explicit Cmnt(std::string&& text) : text(std::move(text)) {}
+
+    Cmnt& operator=(const Cmnt&) = default;
+#endif
+
+    friend bool operator==(const Cmnt& cmnt, const Cmnt& other) = default;
 };
 
-std::ostream& operator<<(std::ostream& os, const Comment& comment);
+std::ostream& operator<<(std::ostream& os, const Cmnt& cmnt);
 
-struct DocType {
+struct Dtd {
     std::string text;
 
-    friend bool operator==(const DocType& dtd, const DocType& other) = default;
+#if DEBUG_XTREE_HD
+    Dtd(Dtd&&) = default;
+
+    Dtd(const Dtd& other) : text(other.text) {
+        printf("Copied DTD: %s\n", text.c_str());
+    }
+
+    Dtd() = default;
+
+    explicit Dtd(std::string&& text) : text(std::move(text)) {}
+
+    Dtd& operator=(const Dtd&) = default;
+#endif
+
+    friend bool operator==(const Dtd& dtd, const Dtd& other) = default;
 };
 
-std::ostream& operator<<(std::ostream& os, const DocType& dtd);
+std::ostream& operator<<(std::ostream& os, const Dtd& dtd);
 
 struct Elem;
 
-using NodeVariant = std::variant<Elem, Comment, Text>;
+using NodeVariant = std::variant<Elem, Cmnt, Text>;
 
-using RootVariant = std::variant<Comment, Decl, DocType>;
+using RootVariant = std::variant<Cmnt, Decl, Dtd>;
 
 struct Node;
 
@@ -88,7 +151,7 @@ struct Elem {
 
     Elem() = default;
 
-    explicit Elem(std::string&& tag) noexcept : Elem(std::move(tag), {}, {}) {}
+    explicit Elem(std::string&& tag) noexcept: Elem(std::move(tag), {}, {}) {}
 
     Elem(std::string&& tag, std::vector<Attr>&& attributes) noexcept
         : Elem(Elem(std::move(tag), std::move(attributes), {})) {}
@@ -96,12 +159,15 @@ struct Elem {
     Elem(std::string&& tag, std::vector<Attr>&& attributes, std::vector<std::unique_ptr<Node>>&& children) noexcept
         : tag(std::move(tag)), attributes(std::move(attributes)), children(std::move(children)) {}
 
-    Elem(const Elem& other) noexcept {
-        tag = other.tag;
-        attributes = other.attributes;
+    Elem(std::string&& tag, std::vector<Node>&& children) noexcept;
+
+    Elem(const Elem& other) noexcept : tag(other.tag), attributes(other.attributes) {
+#if DEBUG_XTREE_HD
+        printf("Copied elem: %s\n", tag.c_str());
+#endif
         children.clear();
         for (auto& child: other.children) {
-            children.emplace_back(std::make_unique<Node>(*child));
+            children.push_back(std::make_unique<Node>(*child)); // within recursive call-chain
         }
     }
 
@@ -113,7 +179,17 @@ struct Elem {
 
     Elem& expect_elem(const std::string& ctag);
 
-    Attr& select_attr_ex(const std::string& attr_name);
+    Attr& expect_attr(const std::string& attr_name);
+
+    void remove_attrs(const std::string& name);
+
+    void remove_elems(const std::string& rtag);
+
+    std::optional<Attr> remove_attr(const std::string& name);
+
+    std::optional<Elem> remove_elem(const std::string& rtag);
+
+    void normalize();
 
     std::vector<std::unique_ptr<Node>>::iterator begin() {
         return children.begin();
@@ -123,28 +199,25 @@ struct Elem {
         return children.end();
     }
 
-    Elem& add_attr(std::string&& name, std::string&& value) {
+    Elem&& add_attr(std::string&& name, std::string&& value) && {
+        attributes.emplace_back(std::move(name), std::move(value));
+        return std::move(*this);
+    }
+
+    Elem& add_attr(std::string&& name, std::string&& value) & {
         attributes.emplace_back(std::move(name), std::move(value));
         return *this;
     }
 
-    void remove_attr(const std::string& name) {
-        auto it = attributes.begin();
-        while (it != attributes.end()) {
-            if (it->name == name) {
-                it = attributes.erase(it);
-            } else {
-                it++;
-            }
-        }
+    Elem&& add_node(NodeVariant&& node) && {
+        children.push_back(std::make_unique<Node>(std::move(node)));
+        return std::move(*this);
     }
 
-    Elem& add_node(NodeVariant&& node) {
-        children.emplace_back(std::make_unique<Node>(std::move(node)));
+    Elem& add_node(NodeVariant&& node) & {
+        children.push_back(std::make_unique<Node>(std::move(node)));
         return *this;
     }
-
-    void remove_node(const std::string& tag);
 
     friend bool operator==(const Elem& elem, const Elem& other) {
         if (elem.tag != other.tag || elem.attributes != other.attributes) {
@@ -173,8 +246,8 @@ struct NodeWalkException : public std::runtime_error {
 struct Node {
     NodeVariant data;
 
-    bool is_comment() const {
-        return holds_alternative<Comment>(data);
+    bool is_cmnt() const {
+        return holds_alternative<Cmnt>(data);
     }
 
     bool is_text() const {
@@ -185,8 +258,8 @@ struct Node {
         return holds_alternative<Elem>(data);
     }
 
-    Comment& as_comment() {
-        if (auto node = get_if<Comment>(&data))
+    Cmnt& as_cmnt() {
+        if (auto node = get_if<Cmnt>(&data))
             return *node;
         throw NodeWalkException("node is not a comment type node");
     }
@@ -219,8 +292,8 @@ std::ostream& operator<<(std::ostream& os, const Node& node);
 struct RootNode {
     RootVariant data;
 
-    bool is_comment() const {
-        return std::holds_alternative<Comment>(data);
+    bool is_cmnt() const {
+        return std::holds_alternative<Cmnt>(data);
     }
 
     bool is_decl() const {
@@ -228,11 +301,11 @@ struct RootNode {
     }
 
     bool is_dtd() const {
-        return std::holds_alternative<DocType>(data);
+        return std::holds_alternative<Dtd>(data);
     }
 
-    Comment& as_comment() {
-        if (auto node = std::get_if<Comment>(&data))
+    Cmnt& as_cmnt() {
+        if (auto node = std::get_if<Cmnt>(&data))
             return *node;
         throw NodeWalkException("node is not a comment type node");
     }
@@ -243,8 +316,8 @@ struct RootNode {
         throw NodeWalkException("node is not a decl type node");
     }
 
-    DocType& as_dtd() {
-        if (auto node = std::get_if<DocType>(&data))
+    Dtd& as_dtd() {
+        if (auto node = std::get_if<Dtd>(&data))
             return *node;
         throw NodeWalkException("node is not a decl type node");
     }
@@ -262,9 +335,9 @@ struct Document {
 
     Document() = default;
 
-    explicit Document(const std::string& docstr);
+    static Document from_file(const std::string&);
 
-    static bool RECURSIVE_PARSER;
+    static Document from_string(const std::string& str);
 
     Decl* select_decl(const std::string& tag) {
         for (auto& child: children)
@@ -274,16 +347,9 @@ struct Document {
         return nullptr;
     }
 
-    void remove_decl(const std::string& rtag) {
-        auto it = children.begin();
-        while (it != children.end()) {
-            if ((*it)->is_decl() && (*it)->as_decl().tag == rtag) {
-                it = children.erase(it);
-            } else {
-                it++;
-            }
-        }
-    }
+    void remove_decls(const std::string& rtag);
+
+    std::optional<Decl> remove_decl(const std::string& rtag);
 
     std::vector<std::unique_ptr<RootNode>>::iterator begin() {
         return children.begin();
@@ -294,37 +360,31 @@ struct Document {
     }
 
     Document& add_node(RootVariant&& node) {
-        children.emplace_back(std::make_unique<RootNode>(std::move(node)));
+        children.push_back(std::make_unique<RootNode>(std::move(node)));
         return *this;
     }
 
-    Elem& expect_root() {
+    Elem& expect_root() const {
         if (root != nullptr) {
             return *root;
         }
-        throw NodeWalkException("Document does not contain a root element");
+        throw NodeWalkException("document does not contain a root element");
     }
 
-    Document& add_root(Elem elem) {
+    Document& add_root(Elem&& elem) {
         root = std::make_unique<Elem>(std::move(elem));
         return *this;
     }
 
     std::string serialize() const;
 
-    friend std::ostream& operator<<(std::ostream& os, const Document& document) {
-        for (auto& node: document.children)
-            os << *node;
-        os << *document.root;
-        return os;
-    }
-
     friend bool operator==(const Document& document, const Document& other) {
         if (document.root != nullptr && other.root != nullptr) {
             if (*document.root != *other.root) {
                 return false;
             }
-        } else if (document.root != nullptr || other.root != nullptr) {
+        }
+        else if (document.root != nullptr || other.root != nullptr) {
             return false;
         }
         if (document.children.size() != other.children.size()) {
@@ -338,12 +398,14 @@ struct Document {
     }
 };
 
+std::ostream& operator<<(std::ostream& os, const Document& document);
+
 struct DocumentWalker {
     virtual void on_elem(Elem& elem) {};
 
-    virtual void on_comment(Comment& comment) {};
+    virtual void on_cmnt(Cmnt& cmnt) {};
 
-    virtual void on_dtd(DocType& dtd) {};
+    virtual void on_dtd(Dtd& dtd) {};
 
     virtual void on_decl(Decl& decl) {};
 
@@ -352,8 +414,25 @@ struct DocumentWalker {
     void walk_document(Document& document);
 };
 
+enum class ParseError {
+    EndOfStream,
+    InvalidEscSeq,
+    InvalidTagname,
+    InvalidCloseTok,
+    InvalidOpenTok,
+    InvalidAttrList,
+    InvalidCloseDecl,
+    AttrValBegin,
+    UnclosedAttrsList,
+    CloseTagMismatch,
+    MultipleRoots,
+    InvalidRootOpenTok
+};
+
 struct ParseException : public std::runtime_error {
-    explicit ParseException(std::string& m) : std::runtime_error(m) {}
+    ParseError code;
+
+    explicit ParseException(std::string& m, ParseError code) : std::runtime_error(m), code(code) {}
 };
 
 }

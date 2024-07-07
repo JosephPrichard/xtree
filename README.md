@@ -18,10 +18,11 @@ An example XML file:
 </book>
 ```
 
-Deserialize a document from a string using the `Document` constructor.
+Deserialize a document from a string or a file using `Document` static methods.
 
 ```c++
-xtree::Document document(docstr);
+xtree::Document document(str);
+xtree::Document document2();
 ```
 
 Serialize a document into a string or file using `xtree::Document::serialize()` or the `<<` operator.
@@ -35,24 +36,22 @@ ofs << document;
 
 Nodes on the document tree can be accessed or modified using utility functions.
 ```c++
-auto child = document.find_element("Manager")->select_elem("Programmer");
-auto value = document.select_elem("Employee")->select_attr("name")->value();
-
-document.add_node(xtree::Elem("CEO"));
-document.select_elem("CEO")->add_attribute("name", "Joseph");
+xtree::Elem* child = document.select_elem("Manager")->select_elem("Programmer");
+std::string& value = document.select_elem("Employee")->select_attr("name")->value;
+document.add_node(xtree::Elem("Ceo"));
+document.select_elem("Ceo")->add_attribute("name", "Joseph");
 ```
 
 ```c++
 xtree::Document document;
 
-auto decl = xtree::Decl("xml", {{"version", "1.0"}});
-
-auto root = xtree::Elem("Dad", {{"name", "Tom"}, {"age", "54"}});
+xtree::Decl decl("xml", {{"version", "1.0"}});
+xtre::Elem root("Dad", {{"name", "Tom"}, {"age", "54"}});
 root.add_node(xtree::Elem("Son", {{"name", "Joseph"}, {"age", "22"}}));
-
-document.add_node(std::move(decl));
-document.set_root(std::move(root));
+document.add_node(decl);
+document.add_root(root);
 ```
+
 Child nodes of elements and documents can be iterated over.
 ```c++
 xtree::Document document;
@@ -60,14 +59,14 @@ xtree::Document document;
 for (std::unique_ptr<xtree::RootNode>& child : document) {
     if (child->is_decl()) {
         std::cout << child->as_decl().tag << std::endl;
-    } else if (child->is_comment()) {
-        std::cout << child->as_comment().text << std::endl;
+    } else if (child->is_cmnt()) {
+        std::cout << child->as_cmnt().text << std::endl;
     } else {
         std::cout << child->as_dtd().text << std::endl;
     }
 }
 
-for (std::unique_ptr<xtree::Node>& child : *document.root_elem()) {
+for (std::unique_ptr<xtree::Node>& child : *document.root) {
     if (child->is_elem()) {
         std::cout << child->as_elem().tag << std::endl;
     } else if (child->is_text()) {
@@ -77,14 +76,14 @@ for (std::unique_ptr<xtree::Node>& child : *document.root_elem()) {
     }
 }
 ```
-Copy or move fragments of documents to and from each other.
 
+Copy or move fragments of documents to and from each other.
 ```c++
 xtree::Document document("employees1.xml");
 xtree::Document document2("employees2.xml");
 
-auto& employees = document.root_elem().select_elem("Employees");
-auto& employees2 = document.root_elem().select_elem("Employees");
+xtree::Elem& employees = document.root->expect_elem("Employees");
+xtree::Elem& employees2 = document.root->expect_elem("Employees");
 
 employees = employees;
 ```
