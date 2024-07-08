@@ -6,7 +6,7 @@ all: main
 
 main: ../benchmarks/main.cpp
 	mkdir -p ./out
-	clang++ $(CXXFLAGS) main.cpp ../include/xtree.cpp ../include/xtree.hpp -o ./out/benchmark.exe -O3
+	g++ $(CXXFLAGS) main.cpp ../include/xtree.cpp ../include/xtree.hpp -o ./out/benchmark.exe -O3
 
 run:
 	cd out && ./benchmark.exe

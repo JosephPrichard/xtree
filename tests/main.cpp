@@ -362,15 +362,15 @@ void test_remove_many_nodes() {
 
     std::vector<std::string> tags;
     for (auto& node: document.expect_root())
-        if (node->is_elem())
-            tags.push_back(node->as_elem().tag);
+        if (node.is_elem())
+            tags.push_back(node.as_elem().tag);
 
     std::vector<std::string> tags1;
     for (auto& node: document.expect_root().expect_elem("Name1"))
-        if (node->is_elem())
-            tags1.push_back(node->as_elem().tag);
+        if (node.is_elem())
+            tags1.push_back(node.as_elem().tag);
 
-    auto& attrs = document.expect_root().attributes;
+    auto& attrs = document.expect_root().attrs;
 
     std::vector<std::string> expected_tags = {"Name1"};
     if (tags != expected_tags) {
@@ -404,10 +404,10 @@ void test_remove_nodes() {
 
     std::vector<std::string> tags;
     for (auto& node: document.expect_root())
-        if (node->is_elem())
-            tags.push_back(node->as_elem().tag);
+        if (node.is_elem())
+            tags.push_back(node.as_elem().tag);
 
-    auto& attrs = document.expect_root().attributes;
+    auto& attrs = document.expect_root().attrs;
 
     std::vector<std::string> expected_tags = {"Name1", "Name3", "Name2", "Name3"};
     if (tags != expected_tags) {
@@ -596,47 +596,53 @@ void test_walk_doc_root() {
 
     std::vector tags = {"Test", "xsd:Test"};
     int i = 0;
-    for (auto& child: *document.root) {
-        if (!child->is_elem()) {
+    for (auto& child: document.expect_root()) {
+        if (!child.is_elem()) {
             printf("Expected nodes should be elem nodes\n");
         }
-        if (child->as_elem().tag != tags[i]) {
-            printf("Expected %s for elem tag but got %s\n", tags[i], child->as_elem().tag.c_str());
+        if (child.as_elem().tag != tags[i]) {
+            printf("Expected %s for elem tag but got %s\n", tags[i], child.as_elem().tag.c_str());
         }
         i++;
     }
 }
 
 void test_walk_tree() {
-    struct TestWalker : xtree::DocumentWalker {
-        std::vector<std::string> elem_tags = {"Test", "Name"};
-        int ecnt = 0;
-
-        void on_elem(xtree::Elem& elem) override {
-            auto& etag = elem_tags[ecnt++];
-            if (elem.tag != etag) {
-                printf("Expected %s for elem tag but got %s\n", etag.c_str(), elem.tag.c_str());
-            }
-        }
-
-        void on_decl(xtree::Decl& decl) override {
-            if (decl.tag != "xml") {
-                printf("Expected xml for decl tag but got %s\n", decl.tag.c_str());
-            }
-        }
-
-        void on_text(xtree::Text& text) override {
-            if (text.data != "Testing Text") {
-                printf("Expected Testing Text for text but got %s\n", text.data.c_str());
-            }
-        }
-    };
-
-    auto str = "<?xml ?> <Test> <Name/> Testing Text </Test>";
+    auto str = "<?xml ?> <Test> <Test1/> <Name/> Testing Text </Test>";
     auto document = xtree::Document::from_string(str);
 
-    TestWalker walker;
-    walker.walk_document(document);
+    int ecnt = 0;
+    std::vector<std::string> elem_tags = {"Test1", "Name"};
+
+    walk_document(document,
+        [&elem_tags, &ecnt](xtree::Node& node) {
+            if (node.is_elem()) {
+                auto& elem = node.as_elem();
+                auto& etag = elem_tags[ecnt++];
+                if (elem.tag != etag)
+                    printf("Expected %s for elem tag but got %s\n", etag.c_str(), elem.tag.c_str());
+            }
+        },
+        [](xtree::Root& root) {
+            if (root.is_decl()) {
+                auto& decl = root.as_decl();
+                if (root.as_decl().tag != "xml")
+                    printf("Expected xml for decl tag but got %s\n", decl.tag.c_str());
+            }
+        });
+}
+
+void test_stat_tree() {
+    auto str = "<?xml ?> <Test> <Test1/> <Name/> Testing Text </Test>";
+    auto document = xtree::Document::from_string(str);
+
+    auto stats = xtree::doc_stat(document);
+
+    xtree::Docstats expected{5, 454};
+    if (memcmp(&stats, &expected, sizeof(stats)) != 0) {
+        printf("Expected doc stats to be nodes: %zu, mem: %zu but got nodes: %zu, mem: %zu\n",
+            expected.nodes_count, expected.total_mem, stats.nodes_count, stats.total_mem);
+    }
 }
 
 int main() {
@@ -656,14 +662,15 @@ int main() {
         test_larger_doc();
         test_complex_doc();
         test_dashed_comment();
-        test_copy_node();
         test_remove_many_nodes();
         test_remove_nodes();
         test_walk_doc();
         test_walk_doc_root();
         test_walk_tree();
+        test_copy_node();
         test_copy_assign();
         test_copy_assign_self();
+        test_stat_tree();
         test_normalize();
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;

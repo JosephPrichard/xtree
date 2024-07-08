@@ -15,13 +15,13 @@
 using namespace xtree;
 
 struct Reader {
-    virtual int pop_char() {};
+    virtual int pop_char() { return 0; }
 
-    virtual int peek_char() {};
+    virtual int peek_char() { return 0; }
 
-    virtual int peek_ahead(int index) {};
+    virtual int peek_ahead(int index) { return 0; }
 
-    virtual bool peek_match(int skip, const std::string& str) {};
+    virtual bool peek_match(int skip, const std::string& str) { return false; }
 };
 
 struct StringReader : Reader {
@@ -289,7 +289,7 @@ struct Parser {
         while (true) {
             int c = peek_char();
             if (c == EOF) {
-                throw parse_error("reached the end of the stream while parsing raw text", ParseError::EndOfStream);
+                throw parse_error("reached the end of the stream while parsing raw data", ParseError::EndOfStream);
             }
 
             if (c == '&') {
@@ -519,12 +519,12 @@ struct Parser {
             auto tok = read_close_tok();
             switch (tok) {
             case eof_tok:
-                throw parse_error("reached end of stream while parsing attributes", ParseError::EndOfStream);
+                throw parse_error("reached end of stream while parsing attrs", ParseError::EndOfStream);
             case close_end:
             case close_beg:
             case close_decl:
                 // attrs.shrink_to_fit();
-                // no more attributes in the attr list to parse
+                // no more attrs in the attr list to parse
                 return tok;
             case text_tok:
                 read_attrname(attr.name);
@@ -537,7 +537,7 @@ struct Parser {
 
             int c = read_char();
             if (c == EOF) {
-                throw parse_error("reached end of stream while parsing attributes", ParseError::EndOfStream);
+                throw parse_error("reached end of stream while parsing attrs", ParseError::EndOfStream);
             }
             if (c != '=') {
                 throw parse_error("expected a <equals> symbol between attribute pairs, got " + char_string(c), ParseError::InvalidAttrList);
@@ -555,7 +555,7 @@ struct Parser {
         Elem root;
 
         read_tagname(root.tag);
-        auto close_tok = parse_attrs(root.attributes);
+        auto close_tok = parse_attrs(root.attrs);
 
         switch (close_tok) {
         case close_end:
@@ -606,33 +606,31 @@ struct Parser {
             }
             case open_cmt: {
                 auto cmnt = parse_cmnt();
-                auto node = std::make_unique<Node>(std::move(cmnt));
-                top->children.push_back(std::move(node));
+                top->add_node(std::move(cmnt));
                 break;
             }
             case open_beg: {
                 // Read the next element to be processed by the parser
-                auto node = std::make_unique<Node>(Elem());
-                auto elem_ptr = &node.get()->as_elem();
+                auto elem = std::make_unique<Elem>(Elem());
+                auto elem_ptr = elem.get();
 
                 read_tagname(elem_ptr->tag);
-                close_tok = parse_attrs(elem_ptr->attributes);
+                close_tok = parse_attrs(elem_ptr->attrs);
 
                 if (close_tok == close_end) {
-                    // This will be the next node we parse
+                    // This will be the next elem we parse
                     stack.push(elem_ptr);
                 }
-                else if (close_tok != close_beg) { // close_beg means the node has no children
+                else if (close_tok != close_beg) { // close_beg means the elem has no children
                     throw parse_error("unclosed attrs list in tag", ParseError::InvalidAttrList);
                 }
 
-                top->children.push_back(std::move(node));
+                top->add_node(std::move(elem));
                 break;
             }
             case text_tok: {
                 auto text = read_rawtext();
-                auto node = std::make_unique<Node>(std::move(text));
-                top->children.push_back(std::move(node));
+                top->add_node(std::move(text));
                 break;
             }
             default:
@@ -646,8 +644,7 @@ struct Parser {
 
     Cmnt parse_cmnt() {
         skip_spaces();
-
-        Cmnt comm;
+        Cmnt cmnt;
 
         while (true) {
             // check if there are more chars to read
@@ -657,18 +654,17 @@ struct Parser {
             }
             // check for a closing comment tag
             if (read_match(0, "-->")) {
-                trim_spaces(comm.text);
-                return comm;
+                trim_spaces(cmnt.data);
+                return cmnt;
             }
 
-            comm.text += c;
+            cmnt.data += c;
             read_char();
         }
     }
 
     Decl parse_decl() {
         Decl decl;
-
         read_tagname(decl.tag);
 
         auto tok = parse_attrs(decl.attrs);
@@ -680,9 +676,8 @@ struct Parser {
     }
 
     Dtd parse_dtd() {
-        Dtd dtd;
-
         skip_spaces();
+        Dtd dtd;
 
         while (true) {
             int c = read_char();
@@ -691,10 +686,10 @@ struct Parser {
             }
 
             if (c == '>') {
-                trim_spaces(dtd.text);
+                trim_spaces(dtd.data);
                 return dtd;
             }
-            dtd.text += c;
+            dtd.data += c;
         }
     }
 
@@ -708,19 +703,19 @@ struct Parser {
                 return;
             case open_dtd: {
                 auto dtd = parse_dtd();
-                auto node = std::make_unique<RootNode>(std::move(dtd));
+                auto node = std::make_unique<Root>(std::move(dtd));
                 document.children.push_back(std::move(node));
                 break;
             }
             case open_decl: {
                 auto decl = parse_decl();
-                auto node = std::make_unique<RootNode>(std::move(decl));
+                auto node = std::make_unique<Root>(std::move(decl));
                 document.children.push_back(std::move(node));
                 break;
             }
             case open_cmt: {
                 auto cmnt = parse_cmnt();
-                auto node = std::make_unique<RootNode>(std::move(cmnt));
+                auto node = std::make_unique<Root>(std::move(cmnt));
                 document.children.push_back(std::move(node));
                 break;
             }
@@ -734,7 +729,7 @@ struct Parser {
                 break;
             }
             default:
-                auto m = "expected text or a <open-tag>, <open-dtd>, <open-comment> or <open-decl> symbol, got " + std::to_string(tok);
+                auto m = "expected data or a <open-tag>, <open-dtd>, <open-comment> or <open-decl> symbol, got " + std::to_string(tok);
                 throw parse_error(m, ParseError::InvalidRootOpenTok);
             }
         }
@@ -771,22 +766,16 @@ std::string Document::serialize() const {
     return ss.str();
 }
 
-Elem::Elem(std::string&& tag, std::vector<Node>&& children) noexcept : tag(std::move(tag)) {
-    for (auto& child : children) {
-        this->children.push_back(std::make_unique<Node>(child));
-    }
-}
-
 Elem* Elem::select_elem(const std::string& ctag) {
     for (auto& child: children)
-        if (auto elem = get_if<Elem>(&child->data))
-            if (elem->tag == ctag)
-                return elem;
+        if (auto elem = get_if<std::unique_ptr<Elem>>(&child.data))
+            if ((*elem)->tag == ctag)
+                return elem->get();
     return nullptr;
 }
 
 Attr* Elem::select_attr(const std::string& attr_name) {
-    for (auto& attr: attributes)
+    for (auto& attr: attrs)
         if (attr.name == attr_name)
             return &attr;
     return nullptr;
@@ -794,14 +783,14 @@ Attr* Elem::select_attr(const std::string& attr_name) {
 
 Elem& Elem::expect_elem(const std::string& ctag) {
     for (auto& child: children)
-        if (auto elem = get_if<Elem>(&child->data))
-            if (elem->tag == ctag)
-                return *elem;
+        if (auto elem = get_if<std::unique_ptr<Elem>>(&child.data))
+            if ((*elem)->tag == ctag)
+                return **elem;
     throw NodeWalkException("Element does not contain child with tag name " + ctag);
 }
 
 Attr& Elem::expect_attr(const std::string& attr_name) {
-    for (auto& attr: attributes)
+    for (auto& attr: attrs)
         if (attr.name == attr_name)
             return attr;
     throw NodeWalkException("Element does not contain attribute with name " + attr_name);
@@ -811,11 +800,12 @@ std::optional<Elem> Elem::remove_elem(const std::string& rtag) {
     auto it = children.begin();
     while (it != children.end()) {
         auto& node = *it;
-        if (auto elem = std::get_if<Elem>(&node->data)) {
+        if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&node.data)) {
+            auto& elem = *elem_ptr;
             if (elem->tag == rtag) {
-                auto ret = std::move(*elem);
+                auto ret = std::move(elem);
                 children.erase(it);
-                return ret;
+                return std::move(*ret);
             }
         }
         it++;
@@ -824,12 +814,12 @@ std::optional<Elem> Elem::remove_elem(const std::string& rtag) {
 }
 
 std::optional<Attr> Elem::remove_attr(const std::string& name) {
-    auto it = attributes.begin();
-    while (it != attributes.end()) {
+    auto it = attrs.begin();
+    while (it != attrs.end()) {
         auto& attr = *it;
         if (attr.name == name) {
             auto ret = std::move(attr);
-            attributes.erase(it);
+            attrs.erase(it);
             return ret;
         }
         it++;
@@ -854,109 +844,48 @@ std::optional<Decl> Document::remove_decl(const std::string& rtag) {
 }
 
 void Elem::remove_elems(const std::string& rtag) {
-    int boff = 0;
-    for (int i = 0; i < children.size(); i++) {
+    size_t back = 0;
+    for (size_t i = 0; i < children.size(); i++) {
         auto& node = children[i];
-        int next_boff = boff;
-        if (node->is_elem() && node->as_elem().tag == rtag)
-            next_boff++;
-        if (boff != 0)
-            children[i - boff] = std::move(node);
-        boff = next_boff;
+        size_t next_back = back;
+        if (node.is_elem() && node.as_elem().tag == rtag)
+            next_back++;
+        if (back != 0)
+            children[i - back] = std::move(node);
+        back = next_back;
     }
-    children.erase(children.end() - boff, children.end());
+    children.erase(children.end() - back, children.end());
     children.shrink_to_fit();
 }
 
 void Elem::remove_attrs(const std::string& name) {
-    int boff = 0;
-    for (int i = 0; i < attributes.size(); i++) {
-        auto& attr = attributes[i];
-        int next_boff = boff;
+    size_t back = 0;
+    for (size_t i = 0; i < attrs.size(); i++) {
+        auto& attr = attrs[i];
+        size_t next_back = back;
         if (attr.name == name)
-            next_boff++;
-        if (boff != 0)
-            attributes[i - boff] = attr;
-        boff = next_boff;
+            next_back++;
+        if (back != 0)
+            attrs[i - back] = attr;
+        back = next_back;
     }
-    attributes.erase(attributes.end() - boff, attributes.end());
-    attributes.shrink_to_fit();
+    attrs.erase(attrs.end() - back, attrs.end());
+    attrs.shrink_to_fit();
 }
 
 void Document::remove_decls(const std::string& rtag) {
-    int boff = 0;
-    for (int i = 0; i < children.size(); i++) {
+    size_t back = 0;
+    for (size_t i = 0; i < children.size(); i++) {
         auto& node = children[i];
-        int next_boff = boff;
+        size_t next_back = back;
         if (node->is_decl() && node->as_decl().tag == rtag)
-            next_boff++;
-        if (boff != 0)
-            children[i - boff] = std::move(node);
-        boff = next_boff;
+            next_back++;
+        if (back != 0)
+            children[i - back] = std::move(node);
+        back = next_back;
     }
-    children.erase(children.end() - boff, children.end());
+    children.erase(children.end() - back, children.end());
     children.shrink_to_fit();
-}
-
-Elem& Elem::operator=(const Elem& other) {
-    if (this == &other) {
-        return *this;
-    }
-
-    tag = other.tag;
-    attributes = other.attributes;
-
-    // we must store the copied nodes somewhere before we clear and append since other.child_nodes might be a child of child_nodes
-    std::vector<std::unique_ptr<Node>> temp_nodes;
-    temp_nodes.reserve(other.children.size());
-
-    for (auto& node: other.children) {
-        temp_nodes.push_back(std::make_unique<Node>(*node));
-    }
-
-    children.clear();
-    for (auto& node: temp_nodes) {
-        children.push_back(std::move(node));
-    }
-
-    return *this;
-}
-
-void DocumentWalker::walk_document(Document& document) {
-    for (auto& child: document.children) {
-        if (child->is_decl()) {
-            on_decl(child->as_decl());
-        }
-        else if (child->is_dtd()) {
-            on_dtd(child->as_dtd());
-        }
-        else if (child->is_cmnt()) {
-            on_cmnt(child->as_cmnt());
-        }
-    }
-
-    on_elem(*document.root);
-
-    std::stack<Elem*> stack;
-    stack.push(document.root.get());
-
-    while (!stack.empty()) {
-        Elem* top = stack.top();
-        stack.pop();
-
-        for (auto& child: top->children) {
-            if (child->is_text()) {
-                on_text(child->as_text());
-            }
-            else if (child->is_elem()) {
-                on_elem(child->as_elem());
-                stack.push(&child->as_elem());
-            }
-            else if (child->is_cmnt()) {
-                on_cmnt(child->as_cmnt());
-            }
-        }
-    }
 }
 
 void Elem::normalize() {
@@ -973,8 +902,8 @@ void Elem::normalize() {
         auto it = curr_children.begin();
         while (it != curr_children.end()) {
             auto& child = *it;
-            if (child->is_text()) {
-                auto& child_text = child->as_text();
+            if (child.is_text()) {
+                auto& child_text = child.as_text();
                 if (prev_text != nullptr) {
                     prev_text->data += child_text.data;
                     it = curr_children.erase(it);
@@ -985,8 +914,8 @@ void Elem::normalize() {
                 }
             }
             else {
-                if (child->is_elem()) {
-                    auto elem = &child->as_elem();
+                if (child.is_elem()) {
+                    auto elem = &child.as_elem();
                     if (!elem->children.empty())
                         stack.push(elem);
                 }
@@ -997,27 +926,153 @@ void Elem::normalize() {
     }
 }
 
+Docstats xtree::doc_stat(Document& document) {
+    Docstats stats{0, 0};
+
+    if (document.root != nullptr) {
+        stats.nodes_count++;
+
+        stats.total_mem += sizeof(Elem); // size of the elem, which is NOT stored in line with the node, and is therefore NOT counted in sizeof(Node)
+
+        stats.total_mem += document.root->attrs.capacity() * sizeof(Attr); // size of the entire attr vector
+        for (auto& attr : document.root->attrs) {
+            stats.total_mem += attr.name.capacity() + attr.value.capacity(); // strlen of the strings in the attr
+        }
+    }
+
+    walk_document(document,
+        [&stats](Node& node) {
+            stats.nodes_count++;
+            stats.total_mem += sizeof(Node); // size of the node itself (the largest of all variants which in this case is tie between cmnt and text)
+
+            if (node.is_elem()) {
+                auto& elem = node.as_elem();
+
+                stats.total_mem += sizeof(Elem); // size of the elem, which is NOT stored in line with the node, and is therefore NOT counted in sizeof(Node)
+
+                stats.total_mem += elem.attrs.capacity() * sizeof(Attr); // size of the entire attr vector
+                for (auto& attr : elem.attrs) {
+                    stats.total_mem += attr.name.capacity() + attr.value.capacity(); // strlen of the strings in the attr
+                }
+            }
+            else if (node.is_cmnt()) {
+                auto& cmnt = node.as_cmnt();
+                stats.total_mem += cmnt.data.capacity(); // strlen of the string
+            }
+            else if (node.is_text()) {
+                auto& text = node.as_text();
+                stats.total_mem += text.data.capacity(); // strlen of the string
+            }
+        },
+        [&stats](Root& root) {
+            stats.nodes_count++;
+            stats.total_mem += sizeof(Root); // size of the root itself (the largest of all variants which in this case is the decl)
+
+            if (root.is_decl()) {
+                auto& decl = root.as_decl();
+                stats.total_mem += decl.tag.capacity(); // strlen of the string
+
+                stats.total_mem += decl.attrs.capacity() * sizeof(Attr); // size of the entire attr vector
+                for (auto& attr : decl.attrs) {
+                    stats.total_mem += attr.name.capacity() + attr.value.capacity(); // strlen of the strings in the attr
+                }
+            }
+            else if (root.is_cmnt()) {
+                auto& cmnt = root.as_cmnt();
+                stats.total_mem += cmnt.data.capacity(); // strlen of the string
+            }
+            else if (root.is_dtd()) {
+                auto& dtd = root.as_dtd();
+                stats.total_mem += dtd.data.capacity(); // strlen of the string
+            }
+        });
+
+    return stats;
+}
+
+Elem& Elem::operator=(const Elem& other) {
+    if (this == &other) {
+        return *this;
+    }
+
+    tag = other.tag;
+    attrs = other.attrs;
+
+    // we must store the copied nodes somewhere before we clear and append since other.child_nodes might be a child of child_nodes
+    std::vector<Node> temp_nodes;
+    temp_nodes.reserve(other.children.size());
+
+    for (auto& node: other.children) {
+        temp_nodes.emplace_back(node); // copy constructs the node, potentially starting recursive copy-call-chain
+    }
+
+    children.clear();
+    for (auto& node: temp_nodes) {
+        children.push_back(std::move(node));
+    }
+
+    return *this;
+}
+
+Node& Node::operator=(Node&& other) noexcept {
+    if (this == &other)
+        return *this;
+
+    if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&other.data))
+        data = std::move(*elem_ptr);
+    else if (auto text = std::get_if<Text>(&other.data))
+        data = std::move(*text);
+    else if (auto cmnt = std::get_if<Cmnt>(&other.data))
+        data = std::move(*cmnt);
+    return *this;
+}
+
+bool xtree::operator==(const Node& node, const Node& other) {
+    if (node.is_elem() && other.is_elem())
+        return node.as_elem() == other.as_elem();
+    return node.data == other.data;
+}
+
+bool xtree::operator==(const Document& document, const Document& other) {
+    if (document.root != nullptr && other.root != nullptr) {
+        if (*document.root != *other.root)
+            return false;
+    }
+    else if (document.root != nullptr || other.root != nullptr) {
+        return false;
+    }
+
+    if (document.children.size() != other.children.size())
+        return false;
+
+    for (size_t i = 0; i < document.children.size(); i++)
+        if (*document.children[i] != *other.children[i])
+            return false;
+
+    return true;
+}
+
+bool xtree::operator==(const Elem& elem, const Elem& other)  {
+    if (elem.tag != other.tag || elem.attrs != other.attrs)
+        return false;
+    if (elem.children.size() != other.children.size())
+        return false;
+    for (size_t i = 0; i < elem.children.size(); i++)
+        if (elem.children[i] != other.children[i])
+            return false;
+    return true;
+}
+
 std::ostream& xtree::operator<<(std::ostream& os, const Attr& attr) {
     os << attr.name << "=" << "\"";
     for (auto c: attr.value) {
         switch (c) {
-        case '"':
-            os << "&quot;";
-            break;
-        case '\'':
-            os << "&apos;";
-            break;
-        case '<':
-            os << "&lt;";
-            break;
-        case '>':
-            os << "&gt;";
-            break;
-        case '&':
-            os << "&amp;";
-            break;
-        default:
-            os << c;
+        case '"': os << "&quot;"; break;
+        case '\'': os << "&apos;"; break;
+        case '<': os << "&lt;"; break;
+        case '>': os << "&gt;"; break;
+        case '&': os << "&amp;"; break;
+        default: os << c;
         }
     }
     os << "\"";
@@ -1027,23 +1082,12 @@ std::ostream& xtree::operator<<(std::ostream& os, const Attr& attr) {
 std::ostream& xtree::operator<<(std::ostream& os, const Text& text) {
     for (auto c: text.data) {
         switch (c) {
-        case '"':
-            os << "&quot;";
-            break;
-        case '\'':
-            os << "&apos;";
-            break;
-        case '<':
-            os << "&lt;";
-            break;
-        case '>':
-            os << "&gt;";
-            break;
-        case '&':
-            os << "&amp;";
-            break;
-        default:
-            os << c;
+        case '"': os << "&quot;"; break;
+        case '\'': os << "&apos;"; break;
+        case '<': os << "&lt;"; break;
+        case '>': os << "&gt;"; break;
+        case '&': os << "&amp;"; break;
+        default: os << c;
         }
     }
     os << ' ';
@@ -1072,18 +1116,18 @@ std::ostream& xtree::operator<<(std::ostream& os, const Document& document) {
 }
 
 std::ostream& xtree::operator<<(std::ostream& os, const Cmnt& cmnt) {
-    os << "<!-- " << cmnt.text << " --> ";
+    os << "<!-- " << cmnt.data << " --> ";
     return os;
 }
 
 std::ostream& xtree::operator<<(std::ostream& os, const Dtd& dtd) {
-    os << "<!DOCTYPE " << dtd.text << "> ";
+    os << "<!DOCTYPE " << dtd.data << "> ";
     return os;
 }
 
 std::ostream& xtree::operator<<(std::ostream& os, const Node& node) {
-    if (auto elem = std::get_if<Elem>(&node.data))
-        os << *elem;
+    if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&node.data))
+        os << **elem_ptr;
     else if (auto text = std::get_if<Text>(&node.data))
         os << *text;
     else if (auto cmnt = std::get_if<Cmnt>(&node.data))
@@ -1091,7 +1135,7 @@ std::ostream& xtree::operator<<(std::ostream& os, const Node& node) {
     return os;
 }
 
-std::ostream& xtree::operator<<(std::ostream& os, const RootNode& node) {
+std::ostream& xtree::operator<<(std::ostream& os, const Root& node) {
     if (auto text = std::get_if<Decl>(&node.data))
         os << *text;
     else if (auto decl = std::get_if<Cmnt>(&node.data))
@@ -1108,7 +1152,7 @@ std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
     };
 
     std::stack<StackFrame> stack;
-    stack.emplace(&elem, 0);
+    stack.push(StackFrame(&elem, 0));
 
     while (!stack.empty()) {
         StackFrame& top = stack.top();
@@ -1116,26 +1160,26 @@ std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
         auto curr = top.ptr;
         if (top.i == 0) {
             os << "<" << curr->tag;
-            for (size_t i = 0; i < curr->attributes.size(); i++) {
+            for (size_t i = 0; i < curr->attrs.size(); i++) {
                 if (i == 0)
                     os << " ";
-                os << curr->attributes[i];
-                if (i < curr->attributes.size() - 1)
+                os << curr->attrs[i];
+                if (i < curr->attrs.size() - 1)
                     os << " ";
             }
             os << "> ";
         }
         if (top.i < curr->children.size()) {
-            auto child = curr->children[top.i++].get();
-            if (child->is_elem()) {
-                auto elem_child = &child->as_elem();
+            auto& child = curr->children[top.i++];
+            if (child.is_elem()) {
+                auto elem_child = &child.as_elem();
                 stack.emplace(elem_child, 0);
             }
-            else if (child->is_text()) {
-                os << child->as_text();
+            else if (child.is_text()) {
+                os << child.as_text();
             }
-            else if (child->is_cmnt()) {
-                os << child->as_cmnt();
+            else if (child.is_cmnt()) {
+                os << child.as_cmnt();
             }
         }
         else {
