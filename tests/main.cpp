@@ -8,6 +8,10 @@
 #include <iostream>
 #include "../include/xtree.hpp"
 
+void fail_test(const std::string& expected, const std::string& actual) {
+    printf("Failed test\nExpected:\n%s\nGot:\n%s\n\n", expected.c_str(), actual.c_str());
+}
+
 void test_small_document() {
     auto str =
         "<Test TestId=\"0001\" TestType=\"CMD\">"
@@ -25,7 +29,7 @@ void test_small_document() {
     expected.add_root(std::move(root));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 }
 
@@ -40,7 +44,7 @@ void test_dashed_comment() {
     expected.add_root(std::move(root));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 }
 
@@ -55,7 +59,7 @@ void test_unopened_tag() {
     expected.add_root(std::move(root));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 }
 
@@ -71,14 +75,14 @@ void test_escseq() {
     expected.add_root(std::move(root));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 
     auto serial_document = document.serialize();
     auto serial_expected = "<Test name=\"&quot; &apos; &lt; &gt; &amp;\"> &quot; &apos; &lt; &gt; &amp; </Test> ";
 
     if (serial_document != serial_expected) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", serial_expected, serial_document.c_str());
+        fail_test(serial_expected, serial_document);
     }
 }
 
@@ -96,7 +100,7 @@ void test_dtd() {
     expected.add_root(std::move(root));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 }
 
@@ -118,7 +122,7 @@ void test_cdata() {
     expected.add_root(std::move(root));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 }
 
@@ -137,7 +141,7 @@ void test_begin_cdata() {
     expected.add_root(std::move(root));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 }
 
@@ -158,7 +162,7 @@ void test_decl() {
     expected.add_root(std::move(root));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 }
 
@@ -195,7 +199,7 @@ void test_larger_doc() {
     expected.add_root(std::move(root));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 }
 
@@ -243,7 +247,7 @@ void test_complex_doc() {
     expected.add_root(std::move(root));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 }
 
@@ -255,7 +259,7 @@ void test_unclosed() {
     }
     catch (xtree::ParseException& ex) {
         if (ex.code != xtree::ParseError::EndOfStream) {
-            printf("Expected error EndOfStream, got: %s\n", ex.what());
+            fail_test("error EndOfStream", ex.what());
         }
         return;
     }
@@ -272,7 +276,7 @@ void test_unequal_tags() {
     }
     catch (xtree::ParseException& ex) {
         if (ex.code != xtree::ParseError::CloseTagMismatch) {
-            printf("Expected error CloseTagMismatch, got: %s\n", ex.what());
+            fail_test("error CloseTagMismatch", ex.what());
         }
         return;
     }
@@ -289,7 +293,7 @@ void test_multiple_roots() {
     }
     catch (xtree::ParseException& ex) {
         if (ex.code != xtree::ParseError::MultipleRoots) {
-            printf("Expected error MultipleRoots, got: %s\n", ex.what());
+            fail_test("error MultipleRoots", ex.what());
         }
         return;
     }
@@ -303,8 +307,8 @@ void test_copy_node() {
 
     // copy the child into the document twice
     auto root = xtree::Elem("Test", {{"TestId", "0001"}});
-    root.add_node(child);
-    root.add_node(child);
+    root.add_node(xtree::Elem::from_other(child));
+    root.add_node(std::move(child));
     root.add_node(xtree::Elem("Name"));
 
     xtree::Document document;
@@ -353,6 +357,8 @@ void test_remove_many_nodes() {
     root.add_node(xtree::Elem("Name"));
 
     document.add_node(xtree::Decl("xml", {{"version", "1.0"}}));
+    document.add_node(xtree::Decl("xml", {{"version", "2.0"}}));
+    document.add_node(xtree::Decl("meta"));
     document.add_root(std::move(root));
 
     document.remove_decls("xml");
@@ -360,31 +366,41 @@ void test_remove_many_nodes() {
     document.expect_root().expect_elem("Name1").remove_elems("Name3");
     document.expect_root().remove_attrs("TestId");
 
+    std::vector<std::string> decls;
+    for (auto& node: document)
+        if (node.is_decl())
+            decls.push_back(node.as_decl().tag);
+
+    std::vector<std::string> expected_decls = {"meta"};
+    if (decls != expected_decls) {
+        fail_test(vecstr_to_string(expected_decls), vecstr_to_string(decls));
+    }
+
     std::vector<std::string> tags;
     for (auto& node: document.expect_root())
         if (node.is_elem())
             tags.push_back(node.as_elem().tag);
+
+    std::vector<std::string> expected_tags = {"Name1"};
+    if (tags != expected_tags) {
+        fail_test(vecstr_to_string(expected_tags), vecstr_to_string(tags));
+    }
 
     std::vector<std::string> tags1;
     for (auto& node: document.expect_root().expect_elem("Name1"))
         if (node.is_elem())
             tags1.push_back(node.as_elem().tag);
 
-    auto& attrs = document.expect_root().attrs;
-
-    std::vector<std::string> expected_tags = {"Name1"};
-    if (tags != expected_tags) {
-        printf("Failed test\nExpected:\n%s\nGot:\n%s\n\n", vecstr_to_string(expected_tags).c_str(), vecstr_to_string(tags).c_str());
-    }
-
     std::vector<std::string> expected_tags1 = {"Name2", "Name4"};
     if (tags1 != expected_tags1) {
-        printf("Failed test\nExpected:\n%s\nGot:\n%s\n\n", vecstr_to_string(expected_tags1).c_str(), vecstr_to_string(tags1).c_str());
+        fail_test(vecstr_to_string(expected_tags1), vecstr_to_string(tags1));
     }
+
+    auto& attrs = document.expect_root().attrs;
 
     std::vector<xtree::Attr> expected_attrs = {{"TestType", "CMD"}};
     if (attrs != expected_attrs) {
-        printf("Failed test\nExpected:\n%s\nGot:\n%s\n\n", attrs_to_string(expected_attrs).c_str(), attrs_to_string(attrs).c_str());
+        fail_test(attrs_to_string(expected_attrs), attrs_to_string(attrs));
     }
 }
 
@@ -397,44 +413,84 @@ void test_remove_nodes() {
         .add_node(xtree::Elem("Name3"))
         .add_node(xtree::Elem("Name2"))
         .add_node(xtree::Elem("Name3"));
+
+    document.add_node(xtree::Decl("xml", {{"version", "1.0"}}));
+    document.add_node(xtree::Decl("xml", {{"version", "2.0"}}));
+    document.add_node(xtree::Decl("meta"));
     document.add_root(std::move(root));
 
+    auto removed_decl = document.remove_decl("xml");
     auto removed_elem = document.expect_root().remove_elem("Name3");
     auto removed_attr = document.expect_root().remove_attr("TestId");
+
+    std::vector<std::string> decls;
+    for (auto& node: document)
+        if (node.is_decl())
+            decls.push_back(node.as_decl().tag);
+
+    std::vector<std::string> expected_decls = {"xml", "meta"};
+    if (decls != expected_decls) {
+        fail_test(vecstr_to_string(expected_decls), vecstr_to_string(decls));
+    }
+    xtree::Decl expected_decl("xml");
+    if (removed_decl.has_value()) {
+        if (removed_decl.value() != expected_decl) {
+            fail_test(expected_decl.tag, removed_decl.value().tag);
+        }
+    }
+    else {
+        fail_test("non null value", "null value");
+    }
 
     std::vector<std::string> tags;
     for (auto& node: document.expect_root())
         if (node.is_elem())
             tags.push_back(node.as_elem().tag);
 
-    auto& attrs = document.expect_root().attrs;
-
     std::vector<std::string> expected_tags = {"Name1", "Name3", "Name2", "Name3"};
     if (tags != expected_tags) {
-        printf("Failed test\nExpected:\n%s\nGot:\n%s\n\n", vecstr_to_string(expected_tags).c_str(), vecstr_to_string(tags).c_str());
+        fail_test(vecstr_to_string(expected_tags), vecstr_to_string(tags));
     }
     xtree::Elem expected_elem("Name3");
     if (removed_elem.has_value()) {
         if (removed_elem.value() != expected_elem) {
-            printf("Failed test\nExpected:\n%s\nGot:\n%s\n\n", expected_elem.tag.c_str(), removed_elem.value().tag.c_str());
+            fail_test(expected_elem.tag, removed_elem.value().tag);
         }
     }
     else {
-        printf("Failed test\nExpected: non null value\n Got: null value");
+        fail_test("non null value", "null value");
     }
+
+    auto& attrs = document.expect_root().attrs;
 
     std::vector<xtree::Attr> expected_attrs = {{"TestType", "CMD"}};
     if (attrs != expected_attrs) {
-        printf("Failed test\nExpected:\n%s\nGot:\n%s\n\n", attrs_to_string(expected_attrs).c_str(), attrs_to_string(attrs).c_str());
+        fail_test(attrs_to_string(expected_attrs), attrs_to_string(attrs));
     }
     xtree::Attr expected_attr("TestId", "0001");
     if (removed_attr.has_value()) {
         if (removed_attr.value() != expected_attr) {
-            printf("Failed test\nExpected:\n%s\nGot:\n%s\n\n", expected_attr.name.c_str(), removed_attr.value().name.c_str());
+            fail_test(expected_attr.name, removed_attr.value().name);
         }
     }
     else {
-        printf("Failed test\nExpected: non null value\n Got: null value");
+        fail_test("non null value", "null value");
+    }
+}
+
+void test_copy_init() {
+    xtree::Document document1;
+    auto root1 = xtree::Elem("Two")
+        .add_node(xtree::Text("Two.One"))
+        .add_node(xtree::Elem("Three")
+            .add_node(xtree::Text("Three.One")))
+        .add_node(xtree::Elem("Four")
+            .add_node(xtree::Elem("Five")));
+
+    auto root2 = xtree::Elem::from_other(root1);
+
+    if (root1 != root2) {
+        fail_test(root1.serialize(), root2.serialize());
     }
 }
 
@@ -446,12 +502,12 @@ void test_copy_assign() {
             .add_node(xtree::Text("Three.One")))
         .add_node(xtree::Elem("Four")
             .add_node(xtree::Elem("Five")));
-    document1.add_root(std::move(xtree::Elem("One").add_node(root1)));
+    document1.add_root(std::move(xtree::Elem("One").add_node(std::move(root1))));
 
     xtree::Document document2;
     auto root2 = xtree::Elem("Two")
         .add_node(xtree::Text("Two.One"));
-    document2.add_root(std::move(xtree::Elem("One").add_node(root2)));
+    document2.add_root(std::move(xtree::Elem("One").add_node(std::move(root2))));
 
     auto& root_ref1 = document1.expect_root().expect_elem("Two");
     auto& roof_ref2 = document2.expect_root().expect_elem("Two");
@@ -468,10 +524,10 @@ void test_copy_assign() {
         .add_node(xtree::Elem("Four")
             .add_node(xtree::Elem("Two")
             .add_node(xtree::Text("Two.One"))));
-    expected.add_root(std::move(xtree::Elem("One").add_node(root3)));
+    expected.add_root(std::move(xtree::Elem("One").add_node(std::move(root3))));
 
     if (expected != document2) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document2.serialize().c_str());
+        fail_test(expected.serialize(), document2.serialize());
     }
 }
 
@@ -480,10 +536,10 @@ void test_copy_assign_self() {
     auto root = xtree::Elem("Two")
         .add_node(xtree::Text("Two.One"))
         .add_node(xtree::Elem("Three")
-                      .add_node(xtree::Text("Three.One")))
+            .add_node(xtree::Text("Three.One")))
         .add_node(xtree::Elem("Four")
-                      .add_node(xtree::Elem("Five")));
-    document.add_root(std::move(xtree::Elem("One").add_node(root)));
+            .add_node(xtree::Elem("Five")));
+    document.add_root(std::move(xtree::Elem("One").add_node(std::move(root))));
 
     auto& elem_ref = document.expect_root().expect_elem("Two");
     auto& roof_ref = document.expect_root();
@@ -493,13 +549,13 @@ void test_copy_assign_self() {
     auto root2 = xtree::Elem("Two")
         .add_node(xtree::Text("Two.One"))
         .add_node(xtree::Elem("Three")
-                      .add_node(xtree::Text("Three.One")))
+            .add_node(xtree::Text("Three.One")))
         .add_node(xtree::Elem("Four")
-                      .add_node(xtree::Elem("Five")));
+            .add_node(xtree::Elem("Five")));
     expected.add_root(std::move(root2));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
     }
 }
 
@@ -518,7 +574,7 @@ void test_normalize() {
         .add_node(xtree::Elem("Four"));
 
     document.add_root(std::move(root));
-    document.root->normalize();
+    int remove_count = document.expect_root().normalize();
 
     xtree::Document expected;
     auto root2 = xtree::Elem("One")
@@ -532,7 +588,10 @@ void test_normalize() {
     expected.add_root(std::move(root2));
 
     if (expected != document) {
-        printf("Failed test\nExpected: \n %s\n but got \n %s \n\n", expected.serialize().c_str(), document.serialize().c_str());
+        fail_test(expected.serialize(), document.serialize());
+    }
+    if (remove_count != 3) {
+        fail_test("3", std::to_string(remove_count));
     }
 }
 
@@ -552,17 +611,17 @@ void test_walk_doc() {
 
     auto document = xtree::Document::from_string(str);
 
-    auto& attr_value = document.root->select_attr("Id")->value;
+    auto& attr_value = document.expect_root().select_attr("Id")->value;
     if (attr_value != "123") {
         printf("Expected '123' for attr but got %s\n", attr_value.c_str());
     }
 
-    auto& tag = document.root->select_elem("Test")->tag;
+    auto& tag = document.expect_root().select_elem("Test")->tag;
     if (tag != "Test") {
         printf("Expected 'Test' for tag but got %s\n", tag.c_str());
     }
 
-    auto attr2 = document.root->select_attr("Nope");
+    auto attr2 = document.expect_root().select_attr("Nope");
     if (attr2 != nullptr) {
         printf("Expected nullptr for attr but got %s\n", attr2->value.c_str());
     }
@@ -570,11 +629,11 @@ void test_walk_doc() {
     std::vector tags = {"xml", "xmlmeta"};
     int i = 0;
     for (auto& child: document) {
-        if (!child->is_decl()) {
+        if (!child.is_decl()) {
             printf("Expected nodes should be decl nodes\n");
         }
-        if (child->as_decl().tag != tags[i]) {
-            printf("Expected %s for decl tag but got %s\n", tags[i], child->as_decl().tag.c_str());
+        if (child.as_decl().tag != tags[i]) {
+            printf("Expected %s for decl tag but got %s\n", tags[i], child.as_decl().tag.c_str());
         }
         i++;
     }
@@ -623,10 +682,10 @@ void test_walk_tree() {
                     printf("Expected %s for elem tag but got %s\n", etag.c_str(), elem.tag.c_str());
             }
         },
-        [](xtree::Root& root) {
-            if (root.is_decl()) {
-                auto& decl = root.as_decl();
-                if (root.as_decl().tag != "xml")
+        [](xtree::BaseNode& node) {
+            if (node.is_decl()) {
+                auto& decl = node.as_decl();
+                if (node.as_decl().tag != "xml")
                     printf("Expected xml for decl tag but got %s\n", decl.tag.c_str());
             }
         });
@@ -636,10 +695,10 @@ void test_stat_tree() {
     auto str = "<?xml ?> <Test> <Test1/> <Name/> Testing Text </Test>";
     auto document = xtree::Document::from_string(str);
 
-    auto stats = xtree::doc_stat(document);
+    auto stats = xtree::stat_document(document);
 
     xtree::Docstats expected{5, 454};
-    if (memcmp(&stats, &expected, sizeof(stats)) != 0) {
+    if (memcmp(&stats, &expected, sizeof(xtree::Docstats)) != 0) {
         printf("Expected doc stats to be nodes: %zu, mem: %zu but got nodes: %zu, mem: %zu\n",
             expected.nodes_count, expected.total_mem, stats.nodes_count, stats.total_mem);
     }
@@ -670,6 +729,7 @@ int main() {
         test_copy_node();
         test_copy_assign();
         test_copy_assign_self();
+        test_copy_init();
         test_stat_tree();
         test_normalize();
     } catch (std::exception& ex) {

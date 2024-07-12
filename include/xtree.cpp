@@ -1,6 +1,7 @@
 // Joseph Prichard
 // 4/27/2024
-// Implementation for the xml document parser
+// An implementation for a xml document parser.
+// In the context of this file (character) refers to a unicode character (utf-8 or utf-16)
 
 #include <iostream>
 #include <stack>
@@ -10,49 +11,93 @@
 #include <optional>
 #include "xtree.hpp"
 
-#define DEBUG_XTREE_IMPL false
-
 using namespace xtree;
 
-struct Reader {
-    virtual int pop_char() { return 0; }
+// 64-bit integers are used for storing unicode characters (max 32 bits) that can be EOF signals (-1)
+typedef long long i64;
 
-    virtual int peek_char() { return 0; }
+// 32-bit integers are used for storing utf-8 and utf-16 characters, which are maximally 32 bits
+typedef int i32;
 
-    virtual int peek_ahead(int index) { return 0; }
+struct BaseReader {
+    int row = 1;
+    int col = 1;
 
-    virtual bool peek_match(int skip, const std::string& str) { return false; }
+    // get a character from the stream, and advance the row and column counters
+    // used without the return value to consume a single character in the stream
+    i64 read_char() {
+        i64 c = get_char();
+        if (c == EOF)
+            return EOF;
+
+        if (c == '\n') {
+            col = 1;
+            row += 1;
+        }
+        else {
+            col += 1;
+        }
+        return c;
+    }
+
+    // consumes ahead len characters in the stream by "read_char"-ing each one
+    // intended to be used after peeking multiple characters ahead
+    void consume(size_t len) {
+        for (size_t i = 0; i < len; i++)
+            read_char();
+    }
+
+    // get a character from the stream without advancing row and column counters
+    virtual i64 get_char() { return 0; }
+
+    // peek at the "current" character in the stream WITHOUT consuming
+    virtual i64 peek_char() { return 0; }
+
+    // peek ahead index characters at the "current" character in the stream WITHOUT consuming
+    // if we call peek_ahead(2) and we have not peeked ahead 0 or 1 yet, they will be automatically "got" from the stream
+    virtual i64 peek_ahead(int index) { return 0; }
+
+    // perform a peek ahead match against a target string - consuming ahead ONLY if the peek ahead matches the target string
+    // skip can be used to start the peek match skip characters ahead - for example if we have already checked that they match
+    // skip exists for the sake of efficiency only
+    virtual bool read_match(const std::string& str, int skip) { return false; }
 };
 
-struct StringReader : Reader {
+struct StringReader : BaseReader {
     const std::string& data;
-    int position = 0;
+    size_t position = 0;
 
     explicit StringReader(const std::string& data) : data(data) {}
 
-    int pop_char() override {
+    i64 get_char() override {
         if (position >= data.size()) {
             return EOF;
         }
-        return data[position++];
+        char c = data[position++];
+
+//        if () { // check if this is a UTF
+//
+//        }
+
+        return c;
     }
 
-    int peek_char() override {
+    i64 peek_char() override {
         if (position >= data.size()) {
             return EOF;
         }
         return data[position];
     }
 
-    int peek_ahead(int index) override {
+    i64 peek_ahead(int index) override {
         if (position + index >= data.size()) {
             return EOF;
         }
         return data[position + index];
     }
 
-    bool peek_match(int skip, const std::string& str) override {
-        for (int i = 0; i < str.size(); i++) {
+    bool read_match(const std::string& str, int skip) override {
+        for (size_t i = 0; i < str.size(); i++) {
             auto index = position + i + skip;
             if (index >= data.size()) {
                 return false;
@@ -62,20 +107,22 @@ struct StringReader : Reader {
                 return false;
             }
         }
+
+        consume(skip + str.size());
         return true;
     }
 };
 
-struct StreamReader : Reader {
+struct StreamReader : BaseReader {
     static constexpr int LB_SIZ = 12; // maximum number of characters we can look ahead
 
-    std::istream& file;
-    int lbuf[LB_SIZ] = {0}; // lookahead ring buffer
+    std::ifstream& file;
+    i32 lbuf[LB_SIZ] = {0}; // lookahead ring buffer
     int head = 0;
     int tail = 0;
     int size = 0;
 
-    explicit StreamReader(std::istream& file) : file(file) {}
+    explicit StreamReader(std::ifstream& file) : file(file) {}
 
     void push_lbuf(int c) {
         assert(size != LB_SIZ);
@@ -100,7 +147,7 @@ struct StreamReader : Reader {
         return size;
     }
 
-    int pop_char() override {
+    i64 get_char() override {
         int c;
         if (size_lbuf() == 0)
             c = file.get();
@@ -109,11 +156,11 @@ struct StreamReader : Reader {
         return c;
     }
 
-    int peek_char() override {
+    i64 peek_char() override {
         return peek_ahead(0);
     }
 
-    int peek_ahead(int index) override {
+    i64 peek_ahead(int index) override {
         int buf_size = size_lbuf();
 
         for (int i = 0; i < index - buf_size + 1; i++) {
@@ -124,12 +171,12 @@ struct StreamReader : Reader {
             push_lbuf(c);
         }
 
-        char c = scan_lbuf(index);
+        int c = scan_lbuf(index);
         return c;
     }
 
-    bool peek_match(int skip, const std::string& str) override {
-        int str_size = str.size();
+    bool read_match(const std::string& str, int skip) override {
+        int str_size = static_cast<int>(str.size());
         int buf_size = size_lbuf();
 
         // we will read maximally skip + str_size ahead in the scan loop, so ensure the lbuf is pre-filled
@@ -142,7 +189,7 @@ struct StreamReader : Reader {
         }
 
         for (int i = 0; i < str_size; i++) {
-            char c = scan_lbuf(i + skip);
+            int c = scan_lbuf(i + skip);
             if (c == EOF) {
                 return false;
             }
@@ -151,69 +198,47 @@ struct StreamReader : Reader {
             }
         }
 
+        consume(skip + str.size());
         return true;
     }
 };
 
+template <typename Reader>
 struct Parser {
     Reader& reader;
-    int row = 1;
-    int col = 1;
 
-#if DEBUG_XTREE_IMPL
-    std::string readlog;
-#endif
+    explicit Parser(Reader& reader) : reader(reader) {
+        const auto req = std::is_base_of<BaseReader, Reader>::value;
+        static_assert(req, "!");
+    }
 
-    explicit Parser(Reader& reader) : reader(reader) {}
-
-    int peek_char() {
+    i64 peek_char() {
         return reader.peek_char();
     }
 
-    int peek_ahead(int index) {
+    i64 peek_ahead(int index) {
         return reader.peek_ahead(index);
     }
 
-    int read_char() {
-        int c = reader.pop_char();
-        if (c == EOF)
-            return EOF;
-
-#if DEBUG_XTREE_IMPL
-        if (!isspace(c))
-            printf("Get: %c\n", c);
-#endif
-
-        if (c == '\n') {
-            col = 1;
-            row += 1;
-        }
-        else {
-            col += 1;
-        }
-
-#if DEBUG_XTREE_IMPL
-        readlog += c;
-#endif
-        return c;
+    i64 read_char() {
+        return reader.read_char();
     }
 
-    bool read_match(int skip, const std::string& str) {
-        bool match = reader.peek_match(skip, str);
-        if (match)
-            for (int i = 0; i < skip + str.size(); i++)
-                read_char();
-        return match;
+    bool read_match(const std::string& str, int skip) {
+        return reader.read_match(str, skip);
+    }
+
+    bool read_match(const std::string& str) {
+        return read_match(str, 0);
     }
 
     void consume(int len) {
-        for (int i = 0; i < len; i++)
-            read_char();
+        return reader.consume(len);
     }
 
     void skip_spaces() {
         while (true) {
-            int c = peek_char();
+            auto c = peek_char();
             if (c == EOF) {
                 return;
             }
@@ -227,12 +252,16 @@ struct Parser {
     }
 
     ParseException parse_error(const std::string& message, ParseError code) const {
-        std::string error_message = message + " at row: " + std::to_string(col) + ", col: " + std::to_string(row);
+        std::string error_message = message + " at row: " + std::to_string(reader.col) + ", col: " + std::to_string(reader.row);
         return ParseException(error_message, code);
     }
 
-    static std::string char_string(int c) {
+    static std::string char_string(i64 c) {
         return {static_cast<char>(c), 1};
+    }
+
+    static void append_symbol(std::string& str, i64 c) {
+        str += static_cast<char>(c);
     }
 
     // reads into the buffer argument to avoid an additional allocation and erases after finished
@@ -243,7 +272,8 @@ struct Parser {
             if (c == EOF) {
                 throw parse_error("reached the end of the stream while parsing escseq", ParseError::EndOfStream);
             }
-            str += c;
+            append_symbol(str, c);
+
             i++;
             if (c == ';') {
                 break;
@@ -270,14 +300,15 @@ struct Parser {
     }
 
     static void trim_spaces(std::string& str) {
-        size_t i = str.size() - 1;
+        int size = static_cast<int>(str.size());
+        int i = size - 1;
         while (i >= 0) {
             if (!std::isspace(str[i])) {
                 break;
             }
             i -= 1;
         }
-        if (i < str.size()) {
+        if (i < size) {
             str.erase(i + 1);
         }
     }
@@ -287,7 +318,7 @@ struct Parser {
 
         std::string str;
         while (true) {
-            int c = peek_char();
+            i64 c = peek_char();
             if (c == EOF) {
                 throw parse_error("reached the end of the stream while parsing raw data", ParseError::EndOfStream);
             }
@@ -296,7 +327,7 @@ struct Parser {
                 read_escseq(str);
             }
             else if (c == '<') {
-                if (read_match(0, "<![CDATA[")) {
+                if (read_match("<![CDATA[")) {
                     read_cdata(str);
                 }
                 else {
@@ -304,7 +335,7 @@ struct Parser {
                 }
             }
             else {
-                str += c;
+                append_symbol(str, c);
                 read_char();
             }
         }
@@ -316,19 +347,19 @@ struct Parser {
 
     void read_cdata(std::string& str) {
         while (true) {
-            int c = read_char();
+            i64 c = read_char();
             if (c == EOF) {
                 throw parse_error("reached the end of the stream while parsing cdata", ParseError::EndOfStream);
             }
 
             // check for a closing cdata tag
             if (c == ']') {
-                int c1 = read_char();
+                i64 c1 = read_char();
                 if (c1 == EOF) {
                     throw parse_error("reached the end of the stream while parsing cdata close tag", ParseError::EndOfStream);
                 }
 
-                int c2 = read_char();
+                i64 c2 = read_char();
                 if (c2 == EOF) {
                     throw parse_error("reached the end of the stream while parsing cdata close tag", ParseError::EndOfStream);
                 }
@@ -336,10 +367,10 @@ struct Parser {
                 if (c1 == ']' && c2 == '>')
                     break;
 
-                str += c1;
-                str += c2;
+                append_symbol(str, c1);
+                append_symbol(str, c2);
             }
-            str += c;
+            append_symbol(str, c);
         }
         // str.shrink_to_fit();
     }
@@ -356,7 +387,7 @@ struct Parser {
     void read_tagname(std::string& str) {
         int i = 0;
         while (true) {
-            int c = peek_char();
+            auto c = peek_char();
             if (c == EOF) {
                 break;
             }
@@ -365,7 +396,7 @@ struct Parser {
                 break;
             }
             if ((i == 0 && is_name_start(c)) || (i > 0 && is_name(c))) {
-                str += c;
+                append_symbol(str, c);
                 read_char();
             }
             else {
@@ -377,14 +408,14 @@ struct Parser {
     }
 
     void read_attrvalue(std::string& str) {
-        int open_symbol = read_char();
+        auto open_symbol = read_char();
         if (open_symbol != '"' && open_symbol != '\'') {
             throw parse_error("attr val must begin with single or double quotes, found: " + char_string(open_symbol), ParseError::AttrValBegin);
         }
-        int close_symbol = open_symbol;
+        auto close_symbol = open_symbol;
 
         while (true) {
-            int c = peek_char();
+            i64 c = peek_char();
             if (c == EOF) {
                 break;
             }
@@ -397,7 +428,7 @@ struct Parser {
                 if (c == close_symbol) {
                     break;
                 }
-                str += c;
+                append_symbol(str, c);
             }
         }
         // str.shrink_to_fit();
@@ -405,14 +436,14 @@ struct Parser {
 
     void read_attrname(std::string& str) {
         while (true) {
-            int c = peek_char();
+            i64 c = peek_char();
             if (c == EOF) {
                 break;
             }
             if (!is_name(c)) {
                 break;
             }
-            str += c;
+            append_symbol(str, c);
             read_char();
         }
         // str.shrink_to_fit();
@@ -434,18 +465,18 @@ struct Parser {
     token read_open_tok() {
         skip_spaces();
 
-        int c = peek_char();
+        i64 c = peek_char();
         if (c == EOF) {
             return eof_tok;
         }
 
         if (c == '<') {
-            int c = peek_ahead(1);
-            if (c == EOF) {
+            i64 c1 = peek_ahead(1);
+            if (c1 == EOF) {
                 return open_beg;
             }
 
-            switch (c) {
+            switch (c1) {
             case '/':
                 consume(2);
                 return open_end;
@@ -453,10 +484,10 @@ struct Parser {
                 consume(2);
                 return open_decl;
             case '!': {
-                if (read_match(2, "--")) {
+                if (read_match("--", 2)) {
                     return open_cmt;
                 }
-                if (read_match(2, "DOCTYPE")) {
+                if (read_match("DOCTYPE", 2)) {
                     return open_dtd;
                 }
                 return text_tok;
@@ -474,29 +505,29 @@ struct Parser {
     token read_close_tok() {
         skip_spaces();
 
-        int c = peek_char();
+        i64 c = peek_char();
         if (c == EOF) {
             return eof_tok;
         }
 
         switch (c) {
         case '/': {
-            int c = peek_ahead(1);
-            if (c == EOF) {
+            i64 c1 = peek_ahead(1);
+            if (c1 == EOF) {
                 return text_tok;
             }
-            if (c == '>') {
+            if (c1 == '>') {
                 consume(2);
                 return close_beg;
             }
             return text_tok;
         }
         case '?': {
-            int c = peek_ahead(1);
-            if (c == EOF) {
+            i64 c1 = peek_ahead(1);
+            if (c1 == EOF) {
                 return text_tok;
             }
-            if (c == '>') {
+            if (c1 == '>') {
                 consume(2);
                 return close_decl;
             }
@@ -535,7 +566,7 @@ struct Parser {
                 throw parse_error(m, ParseError::InvalidAttrList);
             }
 
-            int c = read_char();
+            i64 c = read_char();
             if (c == EOF) {
                 throw parse_error("reached end of stream while parsing attrs", ParseError::EndOfStream);
             }
@@ -574,7 +605,7 @@ struct Parser {
         while (!stack.empty()) {
             Elem* top = stack.top();
 
-            auto tok = read_open_tok();
+            token tok = read_open_tok();
             switch (tok) {
             case eof_tok:
                 throw parse_error("reached end of stream while parsing element children", ParseError::EndOfStream);
@@ -591,7 +622,7 @@ struct Parser {
                 }
                 actual_tag.clear();
 
-                auto tok1 = read_close_tok();
+                token tok1 = read_close_tok();
                 if (tok1 == eof_tok) {
                     throw parse_error("reached end of stream while parsing an end tag", ParseError::EndOfStream);
                 }
@@ -648,17 +679,17 @@ struct Parser {
 
         while (true) {
             // check if there are more chars to read
-            int c = peek_char();
+            i64 c = peek_char();
             if (c == EOF) {
                 throw parse_error("reached end of stream while parsing comment", ParseError::EndOfStream);
             }
             // check for a closing comment tag
-            if (read_match(0, "-->")) {
+            if (read_match("-->")) {
                 trim_spaces(cmnt.data);
                 return cmnt;
             }
 
-            cmnt.data += c;
+            append_symbol(cmnt.data, c);
             read_char();
         }
     }
@@ -667,7 +698,7 @@ struct Parser {
         Decl decl;
         read_tagname(decl.tag);
 
-        auto tok = parse_attrs(decl.attrs);
+        token tok = parse_attrs(decl.attrs);
         if (tok != close_decl) {
             throw parse_error("expected <close-decl> symbol to close a decl, got " + std::to_string(tok), ParseError::InvalidCloseDecl);
         }
@@ -680,7 +711,7 @@ struct Parser {
         Dtd dtd;
 
         while (true) {
-            int c = read_char();
+            i64 c = read_char();
             if (c == EOF) {
                 throw parse_error("reached end of stream while parsing a doctype", ParseError::EndOfStream);
             }
@@ -689,7 +720,7 @@ struct Parser {
                 trim_spaces(dtd.data);
                 return dtd;
             }
-            dtd.data += c;
+            append_symbol(dtd.data, c);
         }
     }
 
@@ -697,26 +728,23 @@ struct Parser {
         bool parsed_root = false;
 
         while (true) {
-            auto tok = read_open_tok();
+            token tok = read_open_tok();
             switch (tok) {
             case eof_tok:
                 return;
             case open_dtd: {
                 auto dtd = parse_dtd();
-                auto node = std::make_unique<Root>(std::move(dtd));
-                document.children.push_back(std::move(node));
+                document.children.emplace_back(std::move(dtd));
                 break;
             }
             case open_decl: {
                 auto decl = parse_decl();
-                auto node = std::make_unique<Root>(std::move(decl));
-                document.children.push_back(std::move(node));
+                document.children.emplace_back(std::move(decl));
                 break;
             }
             case open_cmt: {
                 auto cmnt = parse_cmnt();
-                auto node = std::make_unique<Root>(std::move(cmnt));
-                document.children.push_back(std::move(node));
+                document.children.emplace_back(std::move(cmnt));
                 break;
             }
             case open_beg: {
@@ -741,10 +769,14 @@ Document Document::from_file(const std::string& path) {
     if (!file.good())
         throw std::runtime_error("Could not open file " + path);
 
+    return from_file(file);
+}
+
+Document Document::from_file(std::ifstream& file) {
     Document document;
 
     StreamReader reader(file);
-    Parser parser(reader);
+    Parser<StreamReader> parser(reader);
     parser.parse(document);
 
     return document;
@@ -754,13 +786,25 @@ Document Document::from_string(const std::string& str) {
     Document document;
 
     StringReader reader(str);
-    Parser parser(reader);
+    Parser<StringReader> parser(reader);
     parser.parse(document);
 
     return document;
 }
 
 std::string Document::serialize() const {
+    std::ostringstream ss;
+    ss << (*this);
+    return ss.str();
+}
+
+std::string Elem::serialize() const {
+    std::ostringstream ss;
+    ss << (*this);
+    return ss.str();
+}
+
+std::string Node::serialize() const {
     std::ostringstream ss;
     ss << (*this);
     return ss.str();
@@ -831,7 +875,7 @@ std::optional<Decl> Document::remove_decl(const std::string& rtag) {
     auto it = children.begin();
     while (it != children.end()) {
         auto& node = *it;
-        if (auto decl = std::get_if<Decl>(&node->data)) {
+        if (auto decl = std::get_if<Decl>(&node.data)) {
             if (decl->tag == rtag) {
                 auto ret = std::move(*decl);
                 children.erase(it);
@@ -854,7 +898,7 @@ void Elem::remove_elems(const std::string& rtag) {
             children[i - back] = std::move(node);
         back = next_back;
     }
-    children.erase(children.end() - back, children.end());
+    children.erase(children.end() - static_cast<long long>(back), children.end());
     children.shrink_to_fit();
 }
 
@@ -869,7 +913,7 @@ void Elem::remove_attrs(const std::string& name) {
             attrs[i - back] = attr;
         back = next_back;
     }
-    attrs.erase(attrs.end() - back, attrs.end());
+    attrs.erase(attrs.end() - static_cast<long long>(back), attrs.end());
     attrs.shrink_to_fit();
 }
 
@@ -878,19 +922,21 @@ void Document::remove_decls(const std::string& rtag) {
     for (size_t i = 0; i < children.size(); i++) {
         auto& node = children[i];
         size_t next_back = back;
-        if (node->is_decl() && node->as_decl().tag == rtag)
+        if (node.is_decl() && node.as_decl().tag == rtag)
             next_back++;
         if (back != 0)
             children[i - back] = std::move(node);
         back = next_back;
     }
-    children.erase(children.end() - back, children.end());
+    children.erase(children.end() - static_cast<long long>(back), children.end());
     children.shrink_to_fit();
 }
 
-void Elem::normalize() {
+size_t Elem::normalize() {
     std::stack<Elem*> stack;
     stack.push(this);
+
+    int remove_count = 0;
 
     while (!stack.empty()) {
         Elem* top = stack.top();
@@ -907,6 +953,7 @@ void Elem::normalize() {
                 if (prev_text != nullptr) {
                     prev_text->data += child_text.data;
                     it = curr_children.erase(it);
+                    remove_count++;
                 }
                 else {
                     prev_text = &child_text;
@@ -924,9 +971,11 @@ void Elem::normalize() {
             }
         }
     }
+
+    return remove_count;
 }
 
-Docstats xtree::doc_stat(Document& document) {
+Docstats xtree::stat_document(Document& document) {
     Docstats stats{0, 0};
 
     if (document.root != nullptr) {
@@ -962,14 +1011,16 @@ Docstats xtree::doc_stat(Document& document) {
             else if (node.is_text()) {
                 auto& text = node.as_text();
                 stats.total_mem += text.data.capacity(); // strlen of the string
+            } else {
+                throw std::runtime_error("unknown variant case");
             }
         },
-        [&stats](Root& root) {
+        [&stats](BaseNode& node) {
             stats.nodes_count++;
-            stats.total_mem += sizeof(Root); // size of the root itself (the largest of all variants which in this case is the decl)
+            stats.total_mem += sizeof(BaseNode); // size of the node itself (the largest of all variants which in this case is the decl)
 
-            if (root.is_decl()) {
-                auto& decl = root.as_decl();
+            if (node.is_decl()) {
+                auto& decl = node.as_decl();
                 stats.total_mem += decl.tag.capacity(); // strlen of the string
 
                 stats.total_mem += decl.attrs.capacity() * sizeof(Attr); // size of the entire attr vector
@@ -977,23 +1028,128 @@ Docstats xtree::doc_stat(Document& document) {
                     stats.total_mem += attr.name.capacity() + attr.value.capacity(); // strlen of the strings in the attr
                 }
             }
-            else if (root.is_cmnt()) {
-                auto& cmnt = root.as_cmnt();
+            else if (node.is_cmnt()) {
+                auto& cmnt = node.as_cmnt();
                 stats.total_mem += cmnt.data.capacity(); // strlen of the string
             }
-            else if (root.is_dtd()) {
-                auto& dtd = root.as_dtd();
+            else if (node.is_dtd()) {
+                auto& dtd = node.as_dtd();
                 stats.total_mem += dtd.data.capacity(); // strlen of the string
+            }
+            else {
+                throw std::runtime_error("unknown variant case");
             }
         });
 
     return stats;
 }
 
-Elem& Elem::operator=(const Elem& other) {
-    if (this == &other) {
-        return *this;
+// a stack frame for the copy element function to avoid a recursive-loop
+// exists as a top level declaration so multiple elements can be copied reusing the same stack using the internal copy_elem func
+struct CopyElemSf {
+    const Elem* other_ptr;
+    size_t other_i;
+    Elem* copy_ptr;
+};
+
+// an internal "overload" of the Elem::from_other function that allows us to reuse the same stack when we need to copy a lot of elements at a time
+Elem copy_elem(const Elem& other, std::stack<CopyElemSf>& stack) noexcept {
+    Elem elem(other.tag, other.attrs);
+
+    stack.emplace(&other, 0, &elem);
+
+    while (!stack.empty()) {
+        CopyElemSf& top = stack.top();
+
+        auto& copy = top.copy_ptr;
+        auto curr = top.other_ptr;
+
+        if (top.other_i < curr->children.size()) {
+            auto& other_child = curr->children[top.other_i++];
+
+            if (other_child.is_elem()) {
+                auto other_elem_child = &other_child.as_elem();
+
+                // create a copy of the "other" other_child, and push it (as a node) to the copy's children
+                auto copy_elem = std::make_unique<Elem>(other_elem_child->tag, other_elem_child->attrs);
+                auto copy_elem_ptr = copy_elem.get();
+                copy->children.emplace_back(std::move(copy_elem));
+
+                // push the newly created element node to the stack... we need to copy all of its children before it can be truly considered a "finished" copy
+                // imagine that this is a function call - and we're passing these as arguments to a recursive copy call
+                stack.emplace(other_elem_child, 0, copy_elem_ptr);
+            }
+            else if (other_child.is_text()) {
+                copy->children.emplace_back(other_child.as_text());
+            }
+            else if (other_child.is_cmnt()) {
+                copy->children.emplace_back(other_child.as_cmnt());
+            }
+            else {
+                throw std::runtime_error("unknown variant case");
+            }
+        } else {
+            // we're done copying this node, pop the stack aka "return" from the copy call stack frame
+            stack.pop();
+        }
     }
+
+    return elem;
+}
+
+// an internal "overload" of the Node::from_other function that allows us to reuse a stack in the case the node is an elem
+Node copy_node(const Node& other, std::stack<CopyElemSf>& stack) {
+    if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&other.data))
+        return Node(std::make_unique<Elem>(copy_elem(**elem_ptr, stack)));
+    else if (auto cmnt = std::get_if<Cmnt>(&other.data))
+        return Node(*cmnt);
+    else if (auto text = std::get_if<Text>(&other.data))
+        return Node(*text);
+    else
+        throw std::runtime_error("unknown variant case");
+}
+
+Elem Elem::from_other(const Elem& other) noexcept {
+    std::stack<CopyElemSf> stack;
+    return copy_elem(other, stack);
+}
+
+Node Node::from_other(const Node& other) {
+    if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&other.data))
+        return Node(std::make_unique<Elem>(Elem::from_other(**elem_ptr)));
+    else if (auto cmnt = std::get_if<Cmnt>(&other.data))
+        return Node(*cmnt);
+    else if (auto text = std::get_if<Text>(&other.data))
+        return Node(*text);
+    else
+        throw std::runtime_error("unknown variant case");
+}
+
+Document Document::from_other(const Document& other) {
+    Document document;
+    document.children = other.children;
+
+    if (other.root != nullptr)
+        document.root = std::make_unique<Elem>(Elem::from_other(*other.root));
+
+    return document;
+}
+
+Document& Document::operator=(const Document& other) {
+    if (this == &other)
+        return *this;
+
+    children = other.children;
+
+    if (other.root != nullptr)
+        root = std::make_unique<Elem>(Elem::from_other(*other.root));
+
+    return *this;
+}
+
+Elem& Elem::operator=(const Elem& other) {
+    if (this == &other)
+        return *this;
 
     tag = other.tag;
     attrs = other.attrs;
@@ -1002,8 +1158,11 @@ Elem& Elem::operator=(const Elem& other) {
     std::vector<Node> temp_nodes;
     temp_nodes.reserve(other.children.size());
 
-    for (auto& node: other.children) {
-        temp_nodes.emplace_back(node); // copy constructs the node, potentially starting recursive copy-call-chain
+    std::stack<CopyElemSf> stack;
+
+    for (const Node& node: other.children) {
+        // we use the copy_node function when copying these nodes so that we can reuse the stack in the case we have multiple elements to copy.
+        temp_nodes.push_back(copy_node(node, stack));
     }
 
     children.clear();
@@ -1024,13 +1183,66 @@ Node& Node::operator=(Node&& other) noexcept {
         data = std::move(*text);
     else if (auto cmnt = std::get_if<Cmnt>(&other.data))
         data = std::move(*cmnt);
+    else
+        throw std::runtime_error("unknown variant case");
     return *this;
 }
 
 bool xtree::operator==(const Node& node, const Node& other) {
-    if (node.is_elem() && other.is_elem())
+    if (node.is_elem() && other.is_elem()) // an elem node uses a unique_ptr, so we need a reference to directly check the equality
         return node.as_elem() == other.as_elem();
+
     return node.data == other.data;
+}
+
+bool xtree::operator==(const Elem& elem, const Elem& other)  {
+    // base case: just check if the elem fields themselves are equal - if not we don't even need to check the children
+    if (elem.tag != other.tag || elem.attrs != other.attrs)
+        return false;
+    if (elem.children.size() != other.children.size())
+        return false;
+
+    struct Sf {
+        const Elem* lhs_ptr;
+        const Elem* rhs_ptr;
+        size_t i;
+    };
+
+    std::stack<Sf> stack;
+    stack.emplace(&elem, &other, 0);
+
+    while (!stack.empty()) {
+        Sf& top = stack.top();
+        auto lhs = top.lhs_ptr;
+        auto rhs = top.rhs_ptr;
+
+        if (top.i == 0) {
+            // first check if the elem fields of this stack frame are equal - if not we can just stop early
+            if (lhs->tag != rhs->tag || lhs->attrs != rhs->attrs)
+                return false;
+            if (lhs->children.size() != rhs->children.size())
+                return false;
+        }
+
+        if (top.i < lhs->children.size()) { // invariant: rhs->children.size() == lhs->children.size() is true
+            auto& lhs_child = lhs->children[top.i];
+            auto& rhs_child = rhs->children[top.i];
+            top.i++;
+
+            if (lhs_child.is_elem() && rhs_child.is_elem()) { // we need a special case to handle if the nodes are BOTH elems
+                auto elem_lhs_child = &lhs_child.as_elem();
+                auto elem_rhs_child = &rhs_child.as_elem();
+                stack.emplace(elem_lhs_child, elem_rhs_child, 0); // we'll handle this child in the next stack frame...
+            }
+            else if (lhs_child.data != rhs_child.data ) { // otherwise just check if the variant itself - we don't care if they are, and we stop early if they're not
+                return false;
+            }
+        } else {
+            stack.pop();
+        }
+    }
+
+    return true;
 }
 
 bool xtree::operator==(const Document& document, const Document& other) {
@@ -1046,20 +1258,9 @@ bool xtree::operator==(const Document& document, const Document& other) {
         return false;
 
     for (size_t i = 0; i < document.children.size(); i++)
-        if (*document.children[i] != *other.children[i])
+        if (document.children[i] != other.children[i])
             return false;
 
-    return true;
-}
-
-bool xtree::operator==(const Elem& elem, const Elem& other)  {
-    if (elem.tag != other.tag || elem.attrs != other.attrs)
-        return false;
-    if (elem.children.size() != other.children.size())
-        return false;
-    for (size_t i = 0; i < elem.children.size(); i++)
-        if (elem.children[i] != other.children[i])
-            return false;
     return true;
 }
 
@@ -1109,7 +1310,7 @@ std::ostream& xtree::operator<<(std::ostream& os, const Decl& decl) {
 
 std::ostream& xtree::operator<<(std::ostream& os, const Document& document) {
     for (auto& node: document.children)
-        os << *node;
+        os << node;
     if (document.root != nullptr)
         os << *document.root;
     return os;
@@ -1135,7 +1336,7 @@ std::ostream& xtree::operator<<(std::ostream& os, const Node& node) {
     return os;
 }
 
-std::ostream& xtree::operator<<(std::ostream& os, const Root& node) {
+std::ostream& xtree::operator<<(std::ostream& os, const BaseNode& node) {
     if (auto text = std::get_if<Decl>(&node.data))
         os << *text;
     else if (auto decl = std::get_if<Cmnt>(&node.data))
@@ -1146,16 +1347,16 @@ std::ostream& xtree::operator<<(std::ostream& os, const Root& node) {
 }
 
 std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
-    struct StackFrame {
+    struct Sf {
         const Elem* ptr;
         size_t i;
     };
 
-    std::stack<StackFrame> stack;
-    stack.push(StackFrame(&elem, 0));
+    std::stack<Sf> stack;
+    stack.emplace(&elem, 0);
 
     while (!stack.empty()) {
-        StackFrame& top = stack.top();
+        Sf& top = stack.top();
 
         auto curr = top.ptr;
         if (top.i == 0) {
@@ -1169,6 +1370,7 @@ std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
             }
             os << "> ";
         }
+
         if (top.i < curr->children.size()) {
             auto& child = curr->children[top.i++];
             if (child.is_elem()) {
@@ -1180,6 +1382,9 @@ std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
             }
             else if (child.is_cmnt()) {
                 os << child.as_cmnt();
+            }
+            else {
+                throw std::runtime_error("unknown variant case");
             }
         }
         else {

@@ -15,25 +15,12 @@
 
 namespace xtree {
 
+// debug flag to add runtime logging for copy constructors and exception functions
 #define DEBUG_XTREE_HD false
 
 struct Attr {
     std::string name;
     std::string value;
-
-#if DEBUG_XTREE_HD
-//    Attr(Attr&&) = default;
-//
-//    Attr(const Attr& other) : name(other.name), value(other.value) {
-//        printf("Copied attr: %s\n", name.c_str());
-//    }
-//
-//    Attr() = default;
-//
-//    Attr(std::string name, std::string value) : name(std::move(name)), value(std::move(value)) {}
-//
-//    Attr& operator=(const Attr&) = default;
-#endif
 
     friend bool operator==(const Attr& attr, const Attr& other) = default;
 };
@@ -139,7 +126,11 @@ std::ostream& operator<<(std::ostream& os, const Dtd& dtd);
 struct Elem;
 
 struct NodeWalkException : public std::runtime_error {
-    explicit NodeWalkException(std::string&& m) : std::runtime_error(m) {}
+    explicit NodeWalkException(std::string&& m) : std::runtime_error(m) {
+#if DEBUG_XTREE_HD
+        printf("Threw a node walk exception %s", m.c_str());
+#endif
+    }
 };
 
 using NodeVariant = std::variant<std::unique_ptr<Elem>, Cmnt, Text>; // invariant: ElemPtr cannot point to a null
@@ -151,14 +142,8 @@ struct Node {
 
     Node(Node&&) = default;
 
-    Node(const Node& other) {
-        if (auto elem = std::get_if<std::unique_ptr<Elem>>(&other.data))
-            data = std::make_unique<Elem>(**elem);
-        else if (auto cmnt = std::get_if<Cmnt>(&other.data))
-            data = *cmnt;
-        else if (auto text = std::get_if<Text>(&other.data))
-            data = *text;
-    }
+    // we use a copy factory method instead of a copy constructor to avoid copy semantics in favor of move semantics
+    static Node from_other(const Node& other);
 
     bool is_cmnt() const {
         return holds_alternative<Cmnt>(data);
@@ -217,6 +202,8 @@ struct Node {
     }
 
     Node& operator=(Node&& other) noexcept;
+
+    std::string serialize() const;
 };
 
 bool operator==(const Node& node, const Node& other);
@@ -238,15 +225,8 @@ struct Elem {
     Elem(std::string tag, std::vector<Attr> attributes, std::vector<Node> children) noexcept
         : tag(std::move(tag)), attrs(std::move(attributes)), children(std::move(children)) {}
 
-    Elem(const Elem& other) noexcept : tag(other.tag), attrs(other.attrs) {
-#if DEBUG_XTREE_HD
-        printf("Copied elem: %s\n", tag.c_str());
-#endif
-        children.clear();
-        for (auto& child: other.children) {
-            children.emplace_back(child); // copy constructs the node in the container, potentially starting recursive copy-call-chain
-        }
-    }
+    // we use a copy factory method of a copy constructor to avoid copy semantics in favor of move semantics
+    static Elem from_other(const Elem& other) noexcept;
 
     Elem(Elem&&) = default;
 
@@ -266,7 +246,7 @@ struct Elem {
 
     std::optional<Elem> remove_elem(const std::string& rtag);
 
-    void normalize();
+    size_t normalize();
 
     std::vector<Node>::iterator begin() {
         return children.begin();
@@ -307,16 +287,18 @@ struct Elem {
     }
 
     Elem& operator=(const Elem& other);
+
+    std::string serialize() const;
 };
 
 bool operator==(const Elem& elem, const Elem& other);
 
 std::ostream& operator<<(std::ostream& os, const Elem& elem);
 
-using RootVariant = std::variant<Cmnt, Decl, Dtd>;
+using BaseVariant = std::variant<Cmnt, Decl, Dtd>;
 
-struct Root {
-    RootVariant data;
+struct BaseNode {
+    BaseVariant data;
 
     bool is_cmnt() const {
         return std::holds_alternative<Cmnt>(data);
@@ -348,26 +330,32 @@ struct Root {
         throw NodeWalkException("node is not a decl type node");
     }
 
-    friend bool operator==(const Root& node, const Root& other) {
+    friend bool operator==(const BaseNode& node, const BaseNode& other) {
         return node.data == other.data;
     };
 };
 
-std::ostream& operator<<(std::ostream& os, const Root& node);
+std::ostream& operator<<(std::ostream& os, const BaseNode& node);
 
 struct Document {
-    std::vector<std::unique_ptr<Root>> children;
+    std::vector<BaseNode> children;
     std::unique_ptr<Elem> root;
 
     Document() = default;
 
-    static Document from_file(const std::string&);
+    Document(Document&&) = default;
+
+    static Document from_file(const std::string& file_path);
+
+    static Document from_file(std::ifstream& file);
 
     static Document from_string(const std::string& str);
 
+    static Document from_other(const Document& other);
+
     Decl* select_decl(const std::string& tag) {
         for (auto& child: children)
-            if (auto decl = get_if<Decl>(&child->data))
+            if (auto decl = get_if<Decl>(&child.data))
                 if (decl->tag == tag)
                     return decl;
         return nullptr;
@@ -377,16 +365,16 @@ struct Document {
 
     std::optional<Decl> remove_decl(const std::string& rtag);
 
-    std::vector<std::unique_ptr<Root>>::iterator begin() {
+    std::vector<BaseNode>::iterator begin() {
         return children.begin();
     }
 
-    std::vector<std::unique_ptr<Root>>::iterator end() {
+    std::vector<BaseNode>::iterator end() {
         return children.end();
     }
 
-    Document& add_node(RootVariant node) {
-        children.push_back(std::make_unique<Root>(std::move(node)));
+    Document& add_node(BaseVariant node) {
+        children.emplace_back(std::move(node));
         return *this;
     }
 
@@ -402,14 +390,26 @@ struct Document {
         return *this;
     }
 
+    size_t normalize() const {
+        if (root != nullptr)
+            return root->normalize();
+        return 0;
+    }
+
+    void clear() {
+        children.clear();
+        root = nullptr;
+    }
+
+    Document& operator=(const Document& other);
+
     std::string serialize() const;
 };
 
 template<typename F1, typename F2>
-void walk_document(Document& document, const F1& on_node, const F2& on_root) {
-    for (auto& child_ptr: document.children) {
-        Root& child = *child_ptr;
-        on_root(child);
+void walk_document(Document& document, const F1& on_node, const F2& on_base) {
+    for (auto& child: document.children) {
+        on_base(child);
     }
 
     std::stack<Elem*> stack;
@@ -433,7 +433,7 @@ struct Docstats {
     size_t total_mem = 0;
 };
 
-Docstats doc_stat(Document& document);
+Docstats stat_document(Document& node);
 
 bool operator==(const Document& document, const Document& other);
 
@@ -457,7 +457,11 @@ enum class ParseError {
 struct ParseException : public std::runtime_error {
     ParseError code;
 
-    explicit ParseException(std::string& m, ParseError code) : std::runtime_error(m), code(code) {}
+    explicit ParseException(std::string& m, ParseError code) : std::runtime_error(m), code(code) {
+#if DEBUG_XTREE_HD
+        printf("Threw a parse exception %s: %d", m.c_str(), code);
+#endif
+    }
 };
 
 }
