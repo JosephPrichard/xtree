@@ -2,16 +2,10 @@
 // 4/25/2024
 // Xml parsing library for C++
 
-#include <string>
-#include <utility>
-#include <vector>
 #include <variant>
 #include <memory>
-#include <iosfwd>
-#include <cstring>
-#include <optional>
 #include <stack>
-#include <functional>
+#include <vector>
 
 namespace xtree {
 

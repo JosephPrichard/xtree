@@ -2,7 +2,6 @@
 // 4/27/2024
 // An implementation for a xml document parser.
 
-#include <iostream>
 #include <stack>
 #include <sstream>
 #include <fstream>

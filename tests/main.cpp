@@ -2,9 +2,9 @@
 // 4/28/2024
 // Tests for parser
 
-#include <memory_resource>
+#include <chrono>
+#include <cstring>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include "../include/xtree.hpp"
 
@@ -305,7 +305,6 @@ void test_multiple_roots() {
 void test_copy_node() {
     auto child = xtree::Elem("Child", {{"Name", "Joseph"}});
 
-    // copy the child into the document twice
     auto root = xtree::Elem("Test", {{"TestId", "0001"}});
     root.add_node(xtree::Elem::from_other(child));
     root.add_node(std::move(child));

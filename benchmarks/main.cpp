@@ -1,4 +1,3 @@
-#include <iomanip>
 #include <chrono>
 #include <iostream>
 #include <fstream>
@@ -269,6 +268,8 @@ int main() {
         benchmark_parse("../input/gie_file2.xml", 10, true);
         benchmark_parse("../input/random_dump.xml", 1, false);
         benchmark_parse("../input/random_dump.xml", 1, true);
+
+        std::cout << "Finished benchmark Parsing" << std::endl;
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
     }
@@ -284,6 +285,8 @@ int main() {
         benchmark_print("../input/gie_file.xml", 100);
         benchmark_print("../input/gie_file2.xml", 100);
         benchmark_print("../input/random_dump.xml", 3);
+
+        std::cout << "Finished benchmark Printing" << std::endl;
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
     }
@@ -298,6 +301,8 @@ int main() {
             << std::endl;
 
         benchmark_copy_normalize("../input/random_dump.xml", document, 3);
+
+        std::cout << "Finished benchmark Copy + Normalize" << std::endl;
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
     }
@@ -313,6 +318,8 @@ int main() {
         benchmark_copyassign_equality("../input/gie_file.xml", 100);
         benchmark_copyassign_equality("../input/gie_file2.xml", 100);
         benchmark_copyassign_equality("../input/random_dump.xml", 3);
+
+        std::cout << "Finished benchmark CopyAssign + Equality" << std::endl;
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
     }
@@ -328,9 +335,11 @@ int main() {
         benchmark_copy_equality("../input/gie_file.xml", 100);
         benchmark_copy_equality("../input/gie_file2.xml", 100);
         benchmark_copy_equality("../input/random_dump.xml", 3);
+
+        std::cout << "Finished benchmark Copy + Equality" << std::endl;
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
     }
 
-    std::cout << "Finished benchmark." << std::endl;
+    std::cout << "Finished benchmark" << std::endl;
 }
