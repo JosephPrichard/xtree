@@ -18,6 +18,14 @@ namespace xtree {
 // debug flag to add runtime logging for copy constructors and exception functions
 #define DEBUG_XTREE_HD false
 
+struct NodeWalkException : public std::runtime_error {
+    explicit NodeWalkException(std::string&& m) : std::runtime_error(m) {
+#if DEBUG_XTREE_HD
+        printf("Threw a node walk exception %s", m.c_str());
+#endif
+    }
+};
+
 struct Attr {
     std::string name;
     std::string value;
@@ -74,6 +82,20 @@ struct Decl {
         return *this;
     }
 
+    Attr* select_attr(const std::string& attr_name) {
+       for (auto& attr: attrs)
+            if (attr.name == attr_name)
+                return &attr;
+        return nullptr;
+    }
+
+    Attr& expect_attr(const std::string& attr_name) {
+        for (auto& attr: attrs)
+            if (attr.name == attr_name)
+                return attr;
+        throw NodeWalkException("decl does not contain attribute with name " + attr_name);
+    }
+
     friend bool operator==(const Decl& decl, const Decl& other) = default;
 };
 
@@ -124,14 +146,6 @@ struct Dtd {
 std::ostream& operator<<(std::ostream& os, const Dtd& dtd);
 
 struct Elem;
-
-struct NodeWalkException : public std::runtime_error {
-    explicit NodeWalkException(std::string&& m) : std::runtime_error(m) {
-#if DEBUG_XTREE_HD
-        printf("Threw a node walk exception %s", m.c_str());
-#endif
-    }
-};
 
 using NodeVariant = std::variant<std::unique_ptr<Elem>, Cmnt, Text>; // invariant: ElemPtr cannot point to a null
 
@@ -351,6 +365,8 @@ struct Document {
 
     static Document from_string(const std::string& str);
 
+    static Document from_buffer(const char* buffer, size_t size);
+
     static Document from_other(const Document& other);
 
     Decl* select_decl(const std::string& tag) {
@@ -451,7 +467,8 @@ enum class ParseError {
     UnclosedAttrsList,
     CloseTagMismatch,
     MultipleRoots,
-    InvalidRootOpenTok
+    InvalidRootOpenTok,
+    InvalidXmlMeta,
 };
 
 struct ParseException : public std::runtime_error {

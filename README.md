@@ -4,6 +4,9 @@ An idiomatic C++20 library for the hierarchical tree based serialization format 
 XTree uses an iterative variant of the recursive descent algorithm to parse a set of mutually recursive structures
 into DOM-like tree structure. The tree structure enforces ownership using `std::unique_ptr` from parent
 to child nodes. XTree provides a myriad of utility functions to modify and analyze an XML document.
+XTree supports ASCII and UTF-8 encodings for XML documents.
+
+XTree was primarily created as a way to sharpen my modern C++ skills.
 
 An example XML file:
 ```xml
@@ -139,23 +142,3 @@ for (xtree::Node& child : document.expect_root()) {
     }
 }
 ```
-
-### Benchmarks
-The results for the benchmarks can also be found in `./benchmarks/outlogs.txt`.
-
-### Feature List
-
-* Efficient and correct XML parsing ✅
-* Support for parsing from both a file and a buffer ✅
-* Utility library ✅
-    * Text node normalization ✅
-    * Node and attr removal ✅
-    * Node appendage and modification ✅
-    * Serialization and ostream support ✅
-    * Copy factory methods and assignment operators ✅
-    * Comparison operations ✅
-* UTF-8 and UTF-16 support ❌
-* xPath parsing and evaluation ❌
-* DTD validation support ❌
-* SIMD parsing using C++ intrinsics ❌ 
-* Parse directly to a struct or class using macros ❌

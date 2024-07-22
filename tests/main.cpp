@@ -147,7 +147,7 @@ void test_begin_cdata() {
 
 void test_decl() {
     auto str =
-        "<?xml version=\"1.0\" ?>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
         "<Test TestId=\"0001\" TestType=\"CMD\">"
         "<Name/>"
         "</Test>";
@@ -155,7 +155,7 @@ void test_decl() {
     auto document = xtree::Document::from_string(str);
 
     xtree::Document expected;
-    auto decl = xtree::Decl("xml", {{"version", "1.0"}});
+    auto decl = xtree::Decl("xml", {{"version", "1.0"}, {"encoding", "UTF-8"}});
     auto root = xtree::Elem("Test", {{"TestId", "0001"}, {"TestType", "CMD"}});
     root.add_node(xtree::Elem("Name"));
     expected.add_node(std::move(decl));
@@ -168,7 +168,7 @@ void test_decl() {
 
 void test_larger_doc() {
     auto str =
-        "<?xml version=\"1.0\"?>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
         "<?xmlmeta?>"
         "<Tests Id=\"123\">"
         "<Test TestId=\"0001\" TestType=\"CMD\">"
@@ -183,7 +183,7 @@ void test_larger_doc() {
 
     xtree::Document expected;
 
-    expected.add_node(xtree::Decl("xml", {{"version", "1.0"}}));
+    expected.add_node(xtree::Decl("xml", {{"version", "1.0"}, {"encoding", "UTF-8"}}));
     expected.add_node(xtree::Decl("xmlmeta"));
 
     auto root = xtree::Elem("Tests", {{"Id", "123"}});
@@ -205,7 +205,7 @@ void test_larger_doc() {
 
 void test_complex_doc() {
     auto str =
-        "<?xml version=\"1.0\"?>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
         "<Tests Id=\"123\">"
         "<Test TestId=\"0001\" TestType=\"CMD\">"
         "<Name> Convert number to string </Name>"
@@ -225,7 +225,7 @@ void test_complex_doc() {
 
     xtree::Document expected;
 
-    expected.add_node(xtree::Decl("xml", {{"version", "1.0"}}));
+    expected.add_node(xtree::Decl("xml", {{"version", "1.0"}, {"encoding", "UTF-8"}}));
 
     auto root = xtree::Elem("Tests", {{"Id", "123"}});
 
@@ -326,20 +326,32 @@ void test_copy_node() {
     }
 }
 
+void test_utf8_document() {
+    auto str = "<Test> 世界 世界 こんにちは </Test>";
+
+    auto document = xtree::Document::from_string(str);
+
+    xtree::Document expected;
+    auto root = xtree::Elem("Test").add_node(xtree::Text("世界 世界 こんにちは"));
+    expected.add_root(std::move(root));
+
+    if (expected != document) {
+        fail_test(expected.serialize(), document.serialize());
+    }
+}
+
 std::string vecstr_to_string(std::vector<std::string>& vecstr) {
     std::string str = "{ ";
-    for (auto& s: vecstr) {
+    for (auto& s: vecstr)
         str += "\"" + s + "\" ";
-    }
     str += "}";
     return str;
 }
 
 std::string attrs_to_string(std::vector<xtree::Attr>& attrs) {
     std::string str = "{ ";
-    for (auto& attr: attrs) {
+    for (auto& attr: attrs)
         str += "{" + attr.name + " " + attr.value + "} ";
-    }
     str += "}";
     return str;
 }
@@ -356,8 +368,8 @@ void test_remove_many_nodes() {
         .add_node(xtree::Elem("Name3")));
     root.add_node(xtree::Elem("Name"));
 
-    document.add_node(xtree::Decl("xml", {{"version", "1.0"}}));
-    document.add_node(xtree::Decl("xml", {{"version", "2.0"}}));
+    document.add_node(xtree::Decl("xml"));
+    document.add_node(xtree::Decl("xml"));
     document.add_node(xtree::Decl("meta"));
     document.add_root(std::move(root));
 
@@ -414,8 +426,8 @@ void test_remove_nodes() {
         .add_node(xtree::Elem("Name2"))
         .add_node(xtree::Elem("Name3"));
 
-    document.add_node(xtree::Decl("xml", {{"version", "1.0"}}));
-    document.add_node(xtree::Decl("xml", {{"version", "2.0"}}));
+    document.add_node(xtree::Decl("xml"));
+    document.add_node(xtree::Decl("xml"));
     document.add_node(xtree::Decl("meta"));
     document.add_root(std::move(root));
 
@@ -597,7 +609,7 @@ void test_normalize() {
 
 void test_walk_doc() {
     auto str =
-        "<?xml version=\"1.0\"?>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
         "<?xmlmeta?>"
         "<Tests Id=\"123\"> "
         "<Test TestId=\"0001\" TestType=\"CMD\">"
@@ -641,11 +653,11 @@ void test_walk_doc() {
 
 void test_walk_doc_root() {
     auto str =
-        "<?xml version=\"1.0\"?> "
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
         "<?xmlmeta?> "
         "<Tests Id=\"123\"> "
-        "<Test TestId=\"0001\" TestType=\"CMD\"> "
-        "<xsd:Test TestId=\"0001\" TestType=\"CMD\"> "
+        "<Test TestId=\"0001\" TestType=\"CMD\">"
+        "<xsd:Test TestId=\"0001\" TestType=\"CMD\">"
         "The Internal Text"
         "</xsd:Test> "
         "</Test> "
@@ -667,7 +679,7 @@ void test_walk_doc_root() {
 }
 
 void test_walk_tree() {
-    auto str = "<?xml ?> <Test> <Test1/> <Name/> Testing Text </Test>";
+    auto str = R"(<?xml version="1.0" encoding="UTF-8"?> <Test> <Test1/> <Name/> Testing Text </Test>)";
     auto document = xtree::Document::from_string(str);
 
     int ecnt = 0;
@@ -692,12 +704,12 @@ void test_walk_tree() {
 }
 
 void test_stat_tree() {
-    auto str = "<?xml ?> <Test> <Test1/> <Name/> Testing Text </Test>";
+    auto str = R"(<?xml version="1.0" encoding="UTF-8"?> <Test> <Test1/> <Name/> Testing Text </Test>)";
     auto document = xtree::Document::from_string(str);
 
     auto stats = xtree::stat_document(document);
 
-    xtree::Docstats expected{5, 454};
+    xtree::Docstats expected{5, 642};
     if (memcmp(&stats, &expected, sizeof(xtree::Docstats)) != 0) {
         printf("Expected doc stats to be nodes: %zu, mem: %zu but got nodes: %zu, mem: %zu\n",
             expected.nodes_count, expected.total_mem, stats.nodes_count, stats.total_mem);
@@ -713,6 +725,7 @@ int main() {
         test_cdata();
         test_begin_cdata();
         test_dtd();
+        test_utf8_document();
         test_escseq();
         test_unclosed();
         test_unequal_tags();

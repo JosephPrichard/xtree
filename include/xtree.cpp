@@ -1,7 +1,6 @@
 // Joseph Prichard
 // 4/27/2024
 // An implementation for a xml document parser.
-// In the context of this file (character) refers to a unicode character (utf-8 or utf-16)
 
 #include <iostream>
 #include <stack>
@@ -13,10 +12,6 @@
 
 using namespace xtree;
 
-// 64-bit integers are used for storing unicode characters (max 32 bits) that can be EOF signals (-1)
-typedef long long i64;
-
-// 32-bit integers are used for storing utf-8 and utf-16 characters, which are maximally 32 bits
 typedef int i32;
 
 struct BaseReader {
@@ -25,8 +20,8 @@ struct BaseReader {
 
     // get a character from the stream, and advance the row and column counters
     // used without the return value to consume a single character in the stream
-    i64 read_char() {
-        i64 c = get_char();
+    i32 read_char() {
+        i32 c = get_char();
         if (c == EOF)
             return EOF;
 
@@ -40,6 +35,11 @@ struct BaseReader {
         return c;
     }
 
+    ParseException parse_error(const std::string& message, ParseError code) const {
+        std::string error_message = message + " at row: " + std::to_string(row) + ", col: " + std::to_string(col);
+        return ParseException(error_message, code);
+    }
+
     // consumes ahead len characters in the stream by "read_char"-ing each one
     // intended to be used after peeking multiple characters ahead
     void consume(size_t len) {
@@ -48,14 +48,14 @@ struct BaseReader {
     }
 
     // get a character from the stream without advancing row and column counters
-    virtual i64 get_char() { return 0; }
+    virtual i32 get_char() { return 0; }
 
     // peek at the "current" character in the stream WITHOUT consuming
-    virtual i64 peek_char() { return 0; }
+    virtual i32 peek_char() { return 0; }
 
     // peek ahead index characters at the "current" character in the stream WITHOUT consuming
     // if we call peek_ahead(2) and we have not peeked ahead 0 or 1 yet, they will be automatically "got" from the stream
-    virtual i64 peek_ahead(int index) { return 0; }
+    virtual i32 peek_ahead(int index) { return 0; }
 
     // perform a peek ahead match against a target string - consuming ahead ONLY if the peek ahead matches the target string
     // skip can be used to start the peek match skip characters ahead - for example if we have already checked that they match
@@ -64,33 +64,28 @@ struct BaseReader {
 };
 
 struct StringReader : BaseReader {
-    const std::string& data;
+    const char* data;
+    const size_t size;
     size_t position = 0;
 
-    explicit StringReader(const std::string& data) : data(data) {}
+    StringReader(const char* data, size_t size) : data(data), size(size) {}
 
-    i64 get_char() override {
-        if (position >= data.size()) {
+    i32 get_char() override {
+        if (position >= size) {
             return EOF;
         }
-        char c = data[position++];
-
-//        if () { // check if this is a UTF
-//
-//        }
-
-        return c;
+        return data[position++];
     }
 
-    i64 peek_char() override {
-        if (position >= data.size()) {
+    i32 peek_char() override {
+        if (position >= size) {
             return EOF;
         }
         return data[position];
     }
 
-    i64 peek_ahead(int index) override {
-        if (position + index >= data.size()) {
+    i32 peek_ahead(int index) override {
+        if (position + index >= size) {
             return EOF;
         }
         return data[position + index];
@@ -99,7 +94,7 @@ struct StringReader : BaseReader {
     bool read_match(const std::string& str, int skip) override {
         for (size_t i = 0; i < str.size(); i++) {
             auto index = position + i + skip;
-            if (index >= data.size()) {
+            if (index >= size) {
                 return false;
             }
             char c = data[index];
@@ -132,12 +127,12 @@ struct StreamReader : BaseReader {
         size++;
     }
 
-    int scan_lbuf(int index) {
+    i32 scan_lbuf(int index) {
         return lbuf[(head + index) % LB_SIZ];
     }
 
-    int pop_lbuf() {
-        int c = lbuf[head];
+    i32 pop_lbuf() {
+        i32 c = lbuf[head];
         head = (head + 1) % LB_SIZ;
         size--;
         return c;
@@ -147,7 +142,7 @@ struct StreamReader : BaseReader {
         return size;
     }
 
-    i64 get_char() override {
+    i32 get_char() override {
         int c;
         if (size_lbuf() == 0)
             c = file.get();
@@ -156,11 +151,11 @@ struct StreamReader : BaseReader {
         return c;
     }
 
-    i64 peek_char() override {
+    i32 peek_char() override {
         return peek_ahead(0);
     }
 
-    i64 peek_ahead(int index) override {
+    i32 peek_ahead(int index) override {
         int buf_size = size_lbuf();
 
         for (int i = 0; i < index - buf_size + 1; i++) {
@@ -209,18 +204,18 @@ struct Parser {
 
     explicit Parser(Reader& reader) : reader(reader) {
         const auto req = std::is_base_of<BaseReader, Reader>::value;
-        static_assert(req, "!");
+        static_assert(req, "must be derived of reader");
     }
 
-    i64 peek_char() {
+    i32 peek_char() {
         return reader.peek_char();
     }
 
-    i64 peek_ahead(int index) {
+    i32 peek_ahead(int index) {
         return reader.peek_ahead(index);
     }
 
-    i64 read_char() {
+    i32 read_char() {
         return reader.read_char();
     }
 
@@ -252,15 +247,14 @@ struct Parser {
     }
 
     ParseException parse_error(const std::string& message, ParseError code) const {
-        std::string error_message = message + " at row: " + std::to_string(reader.col) + ", col: " + std::to_string(reader.row);
-        return ParseException(error_message, code);
+        return reader.parse_error(message, code);
     }
 
-    static std::string char_string(i64 c) {
+    static std::string char_string(i32 c) {
         return {static_cast<char>(c), 1};
     }
 
-    static void append_symbol(std::string& str, i64 c) {
+    static void append_symbol(std::string& str, i32 c) {
         str += static_cast<char>(c);
     }
 
@@ -318,7 +312,7 @@ struct Parser {
 
         std::string str;
         while (true) {
-            i64 c = peek_char();
+            i32 c = peek_char();
             if (c == EOF) {
                 throw parse_error("reached the end of the stream while parsing raw data", ParseError::EndOfStream);
             }
@@ -347,19 +341,19 @@ struct Parser {
 
     void read_cdata(std::string& str) {
         while (true) {
-            i64 c = read_char();
+            i32 c = read_char();
             if (c == EOF) {
                 throw parse_error("reached the end of the stream while parsing cdata", ParseError::EndOfStream);
             }
 
             // check for a closing cdata tag
             if (c == ']') {
-                i64 c1 = read_char();
+                i32 c1 = read_char();
                 if (c1 == EOF) {
                     throw parse_error("reached the end of the stream while parsing cdata close tag", ParseError::EndOfStream);
                 }
 
-                i64 c2 = read_char();
+                i32 c2 = read_char();
                 if (c2 == EOF) {
                     throw parse_error("reached the end of the stream while parsing cdata close tag", ParseError::EndOfStream);
                 }
@@ -376,18 +370,18 @@ struct Parser {
     }
 
     // non unicode compliant character detection
-    bool static is_name_start(int c) {
-        return isalpha(c) || c == ':' || c == '_';
+    bool static is_name_start(i32 c) {
+        return isalpha(static_cast<char>(c)) || c == ':' || c == '_';
     }
 
-    bool static is_name(int c) {
-        return is_name_start(c) || isdigit(c) || c == '-' || c == '.';
+    bool static is_name(i32 c) {
+        return is_name_start(c) || isdigit(static_cast<char>(c)) || c == '-' || c == '.';
     }
 
     void read_tagname(std::string& str) {
         int i = 0;
         while (true) {
-            auto c = peek_char();
+            i32 c = peek_char();
             if (c == EOF) {
                 break;
             }
@@ -415,7 +409,7 @@ struct Parser {
         auto close_symbol = open_symbol;
 
         while (true) {
-            i64 c = peek_char();
+            i32 c = peek_char();
             if (c == EOF) {
                 break;
             }
@@ -436,7 +430,7 @@ struct Parser {
 
     void read_attrname(std::string& str) {
         while (true) {
-            i64 c = peek_char();
+            i32 c = peek_char();
             if (c == EOF) {
                 break;
             }
@@ -465,13 +459,13 @@ struct Parser {
     token read_open_tok() {
         skip_spaces();
 
-        i64 c = peek_char();
+        i32 c = peek_char();
         if (c == EOF) {
             return eof_tok;
         }
 
         if (c == '<') {
-            i64 c1 = peek_ahead(1);
+            i32 c1 = peek_ahead(1);
             if (c1 == EOF) {
                 return open_beg;
             }
@@ -505,14 +499,14 @@ struct Parser {
     token read_close_tok() {
         skip_spaces();
 
-        i64 c = peek_char();
+        i32 c = peek_char();
         if (c == EOF) {
             return eof_tok;
         }
 
         switch (c) {
         case '/': {
-            i64 c1 = peek_ahead(1);
+            i32 c1 = peek_ahead(1);
             if (c1 == EOF) {
                 return text_tok;
             }
@@ -523,7 +517,7 @@ struct Parser {
             return text_tok;
         }
         case '?': {
-            i64 c1 = peek_ahead(1);
+            i32 c1 = peek_ahead(1);
             if (c1 == EOF) {
                 return text_tok;
             }
@@ -566,12 +560,12 @@ struct Parser {
                 throw parse_error(m, ParseError::InvalidAttrList);
             }
 
-            i64 c = read_char();
+            i32 c = read_char();
             if (c == EOF) {
                 throw parse_error("reached end of stream while parsing attrs", ParseError::EndOfStream);
             }
             if (c != '=') {
-                throw parse_error("expected a <equals> symbol between attribute pairs, got " + char_string(c), ParseError::InvalidAttrList);
+                throw parse_error("expected an <equals> symbol between attribute pairs, got " + char_string(c), ParseError::InvalidAttrList);
             }
 
             read_attrvalue(attr.value);
@@ -679,7 +673,7 @@ struct Parser {
 
         while (true) {
             // check if there are more chars to read
-            i64 c = peek_char();
+            i32 c = peek_char();
             if (c == EOF) {
                 throw parse_error("reached end of stream while parsing comment", ParseError::EndOfStream);
             }
@@ -711,7 +705,7 @@ struct Parser {
         Dtd dtd;
 
         while (true) {
-            i64 c = read_char();
+            i32 c = read_char();
             if (c == EOF) {
                 throw parse_error("reached end of stream while parsing a doctype", ParseError::EndOfStream);
             }
@@ -726,6 +720,7 @@ struct Parser {
 
     void parse(Document& document) {
         bool parsed_root = false;
+        bool parsed_meta = false;
 
         while (true) {
             token tok = read_open_tok();
@@ -739,6 +734,24 @@ struct Parser {
             }
             case open_decl: {
                 auto decl = parse_decl();
+
+                if (decl.tag == "xml") {
+                    if (parsed_meta)
+                        throw parse_error("document may only have a single xml meta decl tag", ParseError::InvalidXmlMeta);
+
+                    auto vattr = decl.select_attr("version");
+                    if (vattr == nullptr)
+                        throw parse_error("expected xml meta tag to have a version field", ParseError::InvalidXmlMeta);
+                    if (vattr->value != "1.0")
+                        throw parse_error("only supports parsing documents with version 1.0, got " + vattr->value, ParseError::InvalidXmlMeta);
+
+                    auto eattr = decl.select_attr("encoding");
+                    if (eattr == nullptr)
+                        throw parse_error("expected xml meta tag to have an encoding field", ParseError::InvalidXmlMeta);
+                    if (eattr->value != "UTF-8")
+                        throw parse_error("only supports UTF-8 encodings, got " + eattr->value, ParseError::InvalidXmlMeta);
+                }
+
                 document.children.emplace_back(std::move(decl));
                 break;
             }
@@ -767,7 +780,7 @@ struct Parser {
 Document Document::from_file(const std::string& path) {
     std::ifstream file(path);
     if (!file.good())
-        throw std::runtime_error("Could not open file " + path);
+        throw std::runtime_error("could not open file " + path);
 
     return from_file(file);
 }
@@ -782,10 +795,20 @@ Document Document::from_file(std::ifstream& file) {
     return document;
 }
 
+Document Document::from_buffer(const char* buffer, size_t size) {
+    Document document;
+
+    StringReader reader(buffer, size);
+    Parser<StringReader> parser(reader);
+    parser.parse(document);
+
+    return document;
+}
+
 Document Document::from_string(const std::string& str) {
     Document document;
 
-    StringReader reader(str);
+    StringReader reader(str.data(), str.size());
     Parser<StringReader> parser(reader);
     parser.parse(document);
 
@@ -830,14 +853,14 @@ Elem& Elem::expect_elem(const std::string& ctag) {
         if (auto elem = get_if<std::unique_ptr<Elem>>(&child.data))
             if ((*elem)->tag == ctag)
                 return **elem;
-    throw NodeWalkException("Element does not contain child with tag name " + ctag);
+    throw NodeWalkException("elem does not contain child with tag name " + ctag);
 }
 
 Attr& Elem::expect_attr(const std::string& attr_name) {
     for (auto& attr: attrs)
         if (attr.name == attr_name)
             return attr;
-    throw NodeWalkException("Element does not contain attribute with name " + attr_name);
+    throw NodeWalkException("elem does not contain attribute with name " + attr_name);
 }
 
 std::optional<Elem> Elem::remove_elem(const std::string& rtag) {
