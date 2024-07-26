@@ -233,6 +233,8 @@ struct Elem {
     Elem(std::string tag, std::vector<Attr> attributes, std::vector<Node> children) noexcept
         : tag(std::move(tag)), attrs(std::move(attributes)), children(std::move(children)) {}
 
+    ~Elem();
+
     // we use a copy factory method of a copy constructor to avoid copy semantics in favor of move semantics
     static Elem from_other(const Elem& other) noexcept;
 

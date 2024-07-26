@@ -1,9 +1,8 @@
 # XTree
 An idiomatic C++20 library for the hierarchical tree based serialization format called XML.
 
-XTree uses an iterative variant of the recursive descent algorithm to parse a set of mutually recursive structures
-into DOM-like tree structure. The tree structure enforces ownership using `std::unique_ptr` from parent
-to child nodes. XTree provides a myriad of utility functions to modify and analyze an XML document.
+XTree uses an iterative variant of the recursive descent algorithm to parse a set of mutually recursive structures into DOM-like tree structure. The tree structure enforces ownership using `std::unique_ptr` from parent
+to child nodes. XTree provides a myriad of utility functions to modify, merge, and analyze XML documents.
 XTree supports ASCII and UTF-8 encodings for XML documents.
 
 XTree was primarily created as a way to sharpen my modern C++ skills.
@@ -11,13 +10,13 @@ XTree was primarily created as a way to sharpen my modern C++ skills.
 An example XML file:
 ```xml
 <book id="bk101">
-  <author>Gambardella, Matthew</author>
-  <title>XML Developer's Guide</title>
-  <genre>Computer</genre>
-  <price>44.95</price>
-  <publish_date>2000-10-01</publish_date>
-  <description>An in-depth look at creating applications
-  with XML.</description>
+  <author> Gambardella, Matthew </author>
+  <title> XML Developer's Guide </title>
+  <genre> Computer </genre>
+  <price> 44.95 </price>
+  <publish_date> 2000-10-01 </publish_date>
+  <description> An in-depth look at creating applications
+  with XML. </description>
 </book>
 ```
 
@@ -39,8 +38,6 @@ $ cmake --build .
 Include the correct headers in the files where you need to use the library.
 ```c++
 #include "../xtree/include/xtree.hpp"
-
-// ... your code after here
 ```
 
 ### Library
@@ -74,13 +71,13 @@ document.select_elem("Ceo")->add_attribute("name", "Joseph");
 ```c++
 xtree::Document document;
 
-xtree::Decl decl("xml", {{"version", "1.0"}});
-xtree::Elem root = xtree::Elem("Dad", {{"name", "Tom"}, {"age", "54"}})
-    .add_node(xtree::Elem("Son", {{"name", "Joseph"}, {"age", "22"}}));
-    .add_node(xtree::Elem("Uncle", {{"name", "James"}, {"age", "57"}}));
+xtree::Decl decl("xml", {{"version", "1.0"}, {"encoding", "UTF-8"}});
+xtree::Elem root = xtree::Elem("Son", {{"name", "John"}, {"age", "22"}})
+    .add_node(xtree::Elem("Dad", {{"name", "Bill"}, {"age", "57"}}))
+    .add_node(xtree::Elem("Mom", {{"name", "Mary"}, {"age", "54"}}));
 
 document.add_node(decl);
-document.add_root(root);
+document.add_root(std::move(root));
 ```
 
 You can remove elems and attributes from the tree using utility functions.
@@ -88,18 +85,24 @@ You can remove elems and attributes from the tree using utility functions.
 ```c++
 xtree::Document document;
 
-// ... add some nodes
+xtree::Decl decl("xml", {{"version", "1.0"}, {"encoding", "UTF-8"}});
+xtree::Elem root = xtree::Elem("Parent", {{"name", "Jack"}})
+    .add_node(xtree::Elem("Child1", {{"name", "Bob"}}))
+    .add_node(xtree::Elem("Child2", {{"name", "Tom"}}));
 
-std::optional<xtree::Attr> removed_attr = document.expect_root().remove_attr("Age");
-std::optional<xtree::Elem> removed_elem = document.expect_root().remove_elem("Son");
+document.add_node(decl);
+document.add_root(std::move(root));
+
+std::optional<xtree::Attr> removed_attr = document.expect_root().remove_attr("`name`");
+std::optional<xtree::Elem> removed_elem = document.expect_root().remove_elem("Child1");
 ```
 
-Copy fragments or the entirety of a document using factory methods.
+Copy fragments or the entirety of a document using factory methods and operators.
 
 ```c++
 xtree::Document document1 = xtree::Document::from_file("employees1.xml");
-xtree::Document document2 = xtree::Document::from_other(document1);
 
+xtree::Document document2 = xtree::Document::from_other(document1);
 xtree::Elem elem2 = xtree::Elem::from_other(document1.expect_root());
 ```
 
@@ -110,8 +113,19 @@ xtree::Document document2 = xtree::Document::from_file("employees2.xml");
 xtree::Elem& employees1 = document1.root->expect_elem("Employees");
 xtree::Elem& employees2 = document2.root->expect_elem("Employees");
 
-// copy assignment operator is called
-employees1 = employees2;
+employees1 = employees2; // copy assignment operator is called
+```
+
+Normalize to merge adjacent text nodes.
+```c++
+xtree::Document document;
+
+xtree::Elem root = xtree::Elem("Root")
+    .add_node(xtree::Text("Hello"))
+    .add_node(xtree::Text("World"));
+document.add_root(std::move(root));
+
+document.normalize();
 ```
 
 Child nodes of elements and documents can be iterated over.
@@ -119,26 +133,20 @@ Child nodes of elements and documents can be iterated over.
 xtree::Document document;
 
 for (xtree::BaseNode& child : document) {
-    if (child->is_decl()) {
+    if (child->is_decl())
         std::cout << child->as_decl().tag << std::endl;
-    } 
-    else if (child->is_cmnt()) {
+    else if (child->is_cmnt())
         std::cout << child->as_cmnt().text << std::endl;
-    } 
-    else {
+    else
         std::cout << child->as_dtd().text << std::endl;
-    }
 }
 
 for (xtree::Node& child : document.expect_root()) {
-    if (child->is_elem()) {
+    if (child->is_elem())
         std::cout << child->as_elem().tag << std::endl;
-    } 
-    else if (child->is_text()) {
+    else if (child->is_text())
         std::cout << child->as_text() << std::endl;
-    } 
-    else {
+    else
         std::cout << child->as_comment().text << std::endl;
-    }
 }
 ```

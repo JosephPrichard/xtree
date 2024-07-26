@@ -123,17 +123,18 @@ void benchmark_parse(const std::string& file_path, int count, bool from_mem) {
     auto stats_total = stat_document(file_path);
 
     double ete_time = 0.0;
-    auto start = std::chrono::steady_clock::now();
 
     for (int i = 0; i < count; i++) {
+        auto start = std::chrono::steady_clock::now();
+
         if (from_mem)
             xtree::Document::from_string(str);
         else
             xtree::Document::from_file(file_path);
-    }
 
-    auto stop = std::chrono::steady_clock::now();
-    ete_time += std::chrono::duration<double, std::milli>(stop - start).count();
+        auto stop = std::chrono::steady_clock::now();
+        ete_time += std::chrono::duration<double, std::milli>(stop - start).count();
+    }
 
     OUT << std::setw(35) << file_path
         << std::setw(10) << (from_mem ? "Memory" : "File")

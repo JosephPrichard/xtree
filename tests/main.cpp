@@ -583,9 +583,9 @@ void test_normalize() {
         .add_node(xtree::Text("One.Three"))
         .add_node(xtree::Text("One.Four"))
         .add_node(xtree::Elem("Four"));
-
     document.add_root(std::move(root));
-    int remove_count = document.expect_root().normalize();
+
+    size_t remove_count = document.expect_root().normalize();
 
     xtree::Document expected;
     auto root2 = xtree::Elem("One")
@@ -715,6 +715,37 @@ void test_stat_tree() {
     }
 }
 
+size_t allocated = 0;
+
+void* operator new(size_t size) {
+    allocated += size;
+    return malloc(size);
+}
+
+void operator delete(void* memory, size_t size) noexcept {
+    allocated -= size;
+    free(memory);
+}
+
+void test_destructor() {
+    auto size1 = allocated;
+    {
+        xtree::Document document;
+        auto root = xtree::Elem("One")
+            .add_node(xtree::Text("One.One"))
+            .add_node(xtree::Elem("Two")
+                .add_node(xtree::Text("Two.One"))
+                .add_node(xtree::Elem("Five")))
+            .add_node(xtree::Elem("Three"))
+            .add_node(xtree::Elem("Four"));
+    }
+    auto size2 = allocated;
+
+    if (size2 - size1 != 0) {
+        printf("Expected alloc size difference to be 0, got: %zd\n", size2 - size1);
+    }
+}
+
 int main() {
     auto start = std::chrono::steady_clock::now();
 
@@ -744,6 +775,7 @@ int main() {
         test_copy_init();
         test_stat_tree();
         test_normalize();
+        test_destructor();
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
     }

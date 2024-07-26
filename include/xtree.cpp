@@ -11,16 +11,48 @@
 
 using namespace xtree;
 
+typedef long long i64;
 typedef int i32;
 
-struct BaseReader {
+struct RingBuffer {
+    static constexpr int LB_SIZ = 12; // maximum number of characters we can look ahead
+
+    i32 lbuf[LB_SIZ] = {0};
+    int head = 0;
+    int tail = 0;
+    int size = 0;
+
+    void push(i32 c) {
+        assert(size != LB_SIZ);
+
+        lbuf[tail] = c;
+        tail = (tail + 1) % LB_SIZ;
+        size++;
+    }
+
+    i32 scan(int index) {
+        return lbuf[(head + index) % LB_SIZ];
+    }
+
+    i32 pop() {
+        i32 c = lbuf[head];
+        head = (head + 1) % LB_SIZ;
+        size--;
+        return c;
+    }
+};
+
+struct StringReader {
     int row = 1;
     int col = 1;
+    const char* data;
+    const size_t size;
+    size_t position = 0;
 
-    // get a character from the stream, and advance the row and column counters
-    // used without the return value to consume a single character in the stream
-    i32 read_char() {
-        i32 c = get_char();
+    StringReader(const char* data, size_t size) : data(data), size(size) {}
+
+    i64 read_char() {
+        i64 c = get_char();
         if (c == EOF)
             return EOF;
 
@@ -39,58 +71,32 @@ struct BaseReader {
         return ParseException(error_message, code);
     }
 
-    // consumes ahead len characters in the stream by "read_char"-ing each one
-    // intended to be used after peeking multiple characters ahead
     void consume(size_t len) {
-        for (size_t i = 0; i < len; i++)
-            read_char();
+        for (size_t i = 0; i < len; i++) read_char();
     }
 
-    // get a character from the stream without advancing row and column counters
-    virtual i32 get_char() { return 0; }
-
-    // peek at the "current" character in the stream WITHOUT consuming
-    virtual i32 peek_char() { return 0; }
-
-    // peek ahead index characters at the "current" character in the stream WITHOUT consuming
-    // if we call peek_ahead(2) and we have not peeked ahead 0 or 1 yet, they will be automatically "got" from the stream
-    virtual i32 peek_ahead(int index) { return 0; }
-
-    // perform a peek ahead match against a target string - consuming ahead ONLY if the peek ahead matches the target string
-    // skip can be used to start the peek match skip characters ahead - for example if we have already checked that they match
-    // skip exists for the sake of efficiency only
-    virtual bool read_match(const std::string& str, int skip) { return false; }
-};
-
-struct StringReader : BaseReader {
-    const char* data;
-    const size_t size;
-    size_t position = 0;
-
-    StringReader(const char* data, size_t size) : data(data), size(size) {}
-
-    i32 get_char() override {
+    i64 get_char() {
         if (position >= size) {
             return EOF;
         }
         return data[position++];
     }
 
-    i32 peek_char() override {
+    i64 peek_char() const {
         if (position >= size) {
             return EOF;
         }
         return data[position];
     }
 
-    i32 peek_ahead(int index) override {
+    i64 peek_ahead(int index) const {
         if (position + index >= size) {
             return EOF;
         }
         return data[position + index];
     }
 
-    bool read_match(const std::string& str, int skip) override {
+    bool read_match(const std::string& str, int skip) {
         for (size_t i = 0; i < str.size(); i++) {
             auto index = position + i + skip;
             if (index >= size) {
@@ -107,71 +113,68 @@ struct StringReader : BaseReader {
     }
 };
 
-struct StreamReader : BaseReader {
-    static constexpr int LB_SIZ = 12; // maximum number of characters we can look ahead
-
+struct StreamReader {
+    int row = 1;
+    int col = 1;
     std::ifstream& file;
-    i32 lbuf[LB_SIZ] = {0}; // lookahead ring buffer
-    int head = 0;
-    int tail = 0;
-    int size = 0;
+    RingBuffer rb;
 
     explicit StreamReader(std::ifstream& file) : file(file) {}
 
-    void push_lbuf(int c) {
-        assert(size != LB_SIZ);
+    i64 read_char() {
+        i64 c = get_char();
+        if (c == EOF)
+            return EOF;
 
-        lbuf[tail] = c;
-        tail = (tail + 1) % LB_SIZ;
-        size++;
-    }
-
-    i32 scan_lbuf(int index) {
-        return lbuf[(head + index) % LB_SIZ];
-    }
-
-    i32 pop_lbuf() {
-        i32 c = lbuf[head];
-        head = (head + 1) % LB_SIZ;
-        size--;
+        if (c == '\n') {
+            col = 1;
+            row += 1;
+        }
+        else {
+            col += 1;
+        }
         return c;
     }
 
-    int size_lbuf() const {
-        return size;
+    ParseException parse_error(const std::string& message, ParseError code) const {
+        std::string error_message = message + " at row: " + std::to_string(row) + ", col: " + std::to_string(col);
+        return ParseException(error_message, code);
     }
 
-    i32 get_char() override {
-        int c;
-        if (size_lbuf() == 0)
+    void consume(size_t len) {
+        for (size_t i = 0; i < len; i++) read_char();
+    }
+
+    i64 get_char() {
+        i32 c;
+        if (rb.size == 0)
             c = file.get();
         else
-            c = pop_lbuf();
+            c = rb.pop();
         return c;
     }
 
-    i32 peek_char() override {
+    i64 peek_char() {
         return peek_ahead(0);
     }
 
-    i32 peek_ahead(int index) override {
-        int buf_size = size_lbuf();
-
+    i64 peek_ahead(int index) {
+        int buf_size = rb.size;
         for (int i = 0; i < index - buf_size + 1; i++) {
             int c = file.get();
             if (c == EOF) {
                 return EOF;
             }
-            push_lbuf(c);
+            rb.push(c);
         }
 
-        int c = scan_lbuf(index);
+        int c = rb.scan(index);
         return c;
     }
 
-    bool read_match(const std::string& str, int skip) override {
+    bool read_match(const std::string& str, int skip) {
         int str_size = static_cast<int>(str.size());
-        int buf_size = size_lbuf();
+        int buf_size = rb.size;
 
         // we will read maximally skip + str_size ahead in the scan loop, so ensure the lbuf is pre-filled
         for (int i = 0; i < skip + str_size - buf_size; i++) {
@@ -179,11 +182,11 @@ struct StreamReader : BaseReader {
             if (c == EOF) {
                 return false;
             }
-            push_lbuf(c);
+            rb.push(c);
         }
 
         for (int i = 0; i < str_size; i++) {
-            int c = scan_lbuf(i + skip);
+            int c = rb.scan(i + skip);
             if (c == EOF) {
                 return false;
             }
@@ -197,24 +200,21 @@ struct StreamReader : BaseReader {
     }
 };
 
-template <typename Reader>
+template <class Reader>
 struct Parser {
     Reader& reader;
 
-    explicit Parser(Reader& reader) : reader(reader) {
-        const auto req = std::is_base_of<BaseReader, Reader>::value;
-        static_assert(req, "must be derived of reader");
-    }
+    explicit Parser(Reader& reader) : reader(reader) {}
 
-    i32 peek_char() {
+    i64 peek_char() {
         return reader.peek_char();
     }
 
-    i32 peek_ahead(int index) {
+    i64 peek_ahead(int index) {
         return reader.peek_ahead(index);
     }
 
-    i32 read_char() {
+    i64 read_char() {
         return reader.read_char();
     }
 
@@ -249,11 +249,11 @@ struct Parser {
         return reader.parse_error(message, code);
     }
 
-    static std::string char_string(i32 c) {
+    static std::string char_string(i64 c) {
         return {static_cast<char>(c), 1};
     }
 
-    static void append_symbol(std::string& str, i32 c) {
+    static void append_symbol(std::string& str, i64 c) {
         str += static_cast<char>(c);
     }
 
@@ -311,7 +311,7 @@ struct Parser {
 
         std::string str;
         while (true) {
-            i32 c = peek_char();
+            i64 c = peek_char();
             if (c == EOF) {
                 throw parse_error("reached the end of the stream while parsing raw data", ParseError::EndOfStream);
             }
@@ -334,25 +334,25 @@ struct Parser {
         }
 
         trim_spaces(str);
-        // str.shrink_to_fit();
+        str.shrink_to_fit();
         return Text(std::move(str));
     }
 
     void read_cdata(std::string& str) {
         while (true) {
-            i32 c = read_char();
+            i64 c = read_char();
             if (c == EOF) {
                 throw parse_error("reached the end of the stream while parsing cdata", ParseError::EndOfStream);
             }
 
             // check for a closing cdata tag
             if (c == ']') {
-                i32 c1 = read_char();
+                i64 c1 = read_char();
                 if (c1 == EOF) {
                     throw parse_error("reached the end of the stream while parsing cdata close tag", ParseError::EndOfStream);
                 }
 
-                i32 c2 = read_char();
+                i64 c2 = read_char();
                 if (c2 == EOF) {
                     throw parse_error("reached the end of the stream while parsing cdata close tag", ParseError::EndOfStream);
                 }
@@ -365,22 +365,21 @@ struct Parser {
             }
             append_symbol(str, c);
         }
-        // str.shrink_to_fit();
     }
 
     // non unicode compliant character detection
-    bool static is_name_start(i32 c) {
+    bool static is_name_start(i64 c) {
         return isalpha(static_cast<char>(c)) || c == ':' || c == '_';
     }
 
-    bool static is_name(i32 c) {
+    bool static is_name(i64 c) {
         return is_name_start(c) || isdigit(static_cast<char>(c)) || c == '-' || c == '.';
     }
 
     void read_tagname(std::string& str) {
         int i = 0;
         while (true) {
-            i32 c = peek_char();
+            i64 c = peek_char();
             if (c == EOF) {
                 break;
             }
@@ -397,7 +396,7 @@ struct Parser {
             }
             i += 1;
         }
-        // str.shrink_to_fit();
+         str.shrink_to_fit();
     }
 
     void read_attrvalue(std::string& str) {
@@ -408,7 +407,7 @@ struct Parser {
         auto close_symbol = open_symbol;
 
         while (true) {
-            i32 c = peek_char();
+            i64 c = peek_char();
             if (c == EOF) {
                 break;
             }
@@ -424,12 +423,12 @@ struct Parser {
                 append_symbol(str, c);
             }
         }
-        // str.shrink_to_fit();
+         str.shrink_to_fit();
     }
 
     void read_attrname(std::string& str) {
         while (true) {
-            i32 c = peek_char();
+            i64 c = peek_char();
             if (c == EOF) {
                 break;
             }
@@ -439,7 +438,7 @@ struct Parser {
             append_symbol(str, c);
             read_char();
         }
-        // str.shrink_to_fit();
+         str.shrink_to_fit();
     }
 
     enum token {
@@ -458,13 +457,13 @@ struct Parser {
     token read_open_tok() {
         skip_spaces();
 
-        i32 c = peek_char();
+        i64 c = peek_char();
         if (c == EOF) {
             return eof_tok;
         }
 
         if (c == '<') {
-            i32 c1 = peek_ahead(1);
+            i64 c1 = peek_ahead(1);
             if (c1 == EOF) {
                 return open_beg;
             }
@@ -498,14 +497,14 @@ struct Parser {
     token read_close_tok() {
         skip_spaces();
 
-        i32 c = peek_char();
+        i64 c = peek_char();
         if (c == EOF) {
             return eof_tok;
         }
 
         switch (c) {
         case '/': {
-            i32 c1 = peek_ahead(1);
+            i64 c1 = peek_ahead(1);
             if (c1 == EOF) {
                 return text_tok;
             }
@@ -516,7 +515,7 @@ struct Parser {
             return text_tok;
         }
         case '?': {
-            i32 c1 = peek_ahead(1);
+            i64 c1 = peek_ahead(1);
             if (c1 == EOF) {
                 return text_tok;
             }
@@ -547,7 +546,7 @@ struct Parser {
             case close_end:
             case close_beg:
             case close_decl:
-                // attrs.shrink_to_fit();
+                 attrs.shrink_to_fit();
                 // no more attrs in the attr list to parse
                 return tok;
             case text_tok:
@@ -559,7 +558,7 @@ struct Parser {
                 throw parse_error(m, ParseError::InvalidAttrList);
             }
 
-            i32 c = read_char();
+            i64 c = read_char();
             if (c == EOF) {
                 throw parse_error("reached end of stream while parsing attrs", ParseError::EndOfStream);
             }
@@ -624,7 +623,7 @@ struct Parser {
                 }
 
                 // Reaching the end of this node means we backtrack
-                // top->children.shrink_to_fit();
+                top->children.shrink_to_fit();
                 stack.pop();
                 break;
             }
@@ -672,7 +671,7 @@ struct Parser {
 
         while (true) {
             // check if there are more chars to read
-            i32 c = peek_char();
+            i64 c = peek_char();
             if (c == EOF) {
                 throw parse_error("reached end of stream while parsing comment", ParseError::EndOfStream);
             }
@@ -704,7 +703,7 @@ struct Parser {
         Dtd dtd;
 
         while (true) {
-            i32 c = read_char();
+            i64 c = read_char();
             if (c == EOF) {
                 throw parse_error("reached end of stream while parsing a doctype", ParseError::EndOfStream);
             }
@@ -912,13 +911,15 @@ std::optional<Decl> Document::remove_decl(const std::string& rtag) {
 void Elem::remove_elems(const std::string& rtag) {
     size_t back = 0;
     for (size_t i = 0; i < children.size(); i++) {
-        auto& node = children[i];
-        size_t next_back = back;
-        if (node.is_elem() && node.as_elem().tag == rtag)
-            next_back++;
-        if (back != 0)
-            children[i - back] = std::move(node);
-        back = next_back;
+        Node* node_ptr = &children[i];
+
+        if (back != 0) {
+            auto index = i - back;
+            children[index] = std::move(*node_ptr);
+        }
+
+        if (node_ptr->is_elem() && node_ptr->as_elem().tag == rtag)
+            back++;
     }
     children.erase(children.end() - static_cast<long long>(back), children.end());
     children.shrink_to_fit();
@@ -927,13 +928,16 @@ void Elem::remove_elems(const std::string& rtag) {
 void Elem::remove_attrs(const std::string& name) {
     size_t back = 0;
     for (size_t i = 0; i < attrs.size(); i++) {
-        auto& attr = attrs[i];
-        size_t next_back = back;
-        if (attr.name == name)
-            next_back++;
-        if (back != 0)
-            attrs[i - back] = attr;
-        back = next_back;
+        Attr* attr_ptr = &attrs[i];
+
+        if (back != 0) {
+            auto index = i - back;
+            attrs[index] = std::move(*attr_ptr);
+            attr_ptr = &attrs[index];
+        }
+
+        if (attr_ptr->name == name)
+            back++;
     }
     attrs.erase(attrs.end() - static_cast<long long>(back), attrs.end());
     attrs.shrink_to_fit();
@@ -942,13 +946,16 @@ void Elem::remove_attrs(const std::string& name) {
 void Document::remove_decls(const std::string& rtag) {
     size_t back = 0;
     for (size_t i = 0; i < children.size(); i++) {
-        auto& node = children[i];
-        size_t next_back = back;
-        if (node.is_decl() && node.as_decl().tag == rtag)
-            next_back++;
-        if (back != 0)
-            children[i - back] = std::move(node);
-        back = next_back;
+        BaseNode* node_ptr = &children[i];
+
+        if (back != 0) {
+            auto index = i - back;
+            children[index] = std::move(*node_ptr);
+            node_ptr = &children[index];
+        }
+
+        if (node_ptr->is_decl() && node_ptr->as_decl().tag == rtag)
+            back++;
     }
     children.erase(children.end() - static_cast<long long>(back), children.end());
     children.shrink_to_fit();
@@ -958,7 +965,7 @@ size_t Elem::normalize() {
     std::stack<Elem*> stack;
     stack.push(this);
 
-    int remove_count = 0;
+    size_t remove_count = 0;
 
     while (!stack.empty()) {
         Elem* top = stack.top();
@@ -966,32 +973,41 @@ size_t Elem::normalize() {
 
         Text* prev_text = nullptr;
         auto& curr_children = top->children;
+        size_t back = 0;
 
-        auto it = curr_children.begin();
-        while (it != curr_children.end()) {
-            auto& child = *it;
-            if (child.is_text()) {
-                auto& child_text = child.as_text();
+        for (size_t i = 0; i < curr_children.size(); i++) {
+            Node* child_ptr = &curr_children[i];
+
+            if (back != 0) {
+                // shift the element back one by moving, depending on how many elements have been removed so far
+                auto index = i - back;
+                curr_children[index] = std::move(*child_ptr);
+                child_ptr = &curr_children[index];
+            }
+
+            if (child_ptr->is_text()) {
+                auto& child_text = child_ptr->as_text();
                 if (prev_text != nullptr) {
                     prev_text->data += child_text.data;
-                    it = curr_children.erase(it);
                     remove_count++;
+                    back++;
                 }
                 else {
                     prev_text = &child_text;
-                    it++;
                 }
             }
             else {
-                if (child.is_elem()) {
-                    auto elem = &child.as_elem();
+                if (child_ptr->is_elem()) {
+                    auto elem = &child_ptr->as_elem();
                     if (!elem->children.empty())
                         stack.push(elem);
                 }
                 prev_text = nullptr;
-                it++;
             }
         }
+
+        curr_children.erase(curr_children.end() - static_cast<long long>(back), curr_children.end());
+        curr_children.shrink_to_fit();
     }
 
     return remove_count;
@@ -1068,20 +1084,20 @@ Docstats xtree::stat_document(Document& document) {
 
 // a stack frame for the copy element function to avoid a recursive-loop
 // exists as a top level declaration so multiple elements can be copied reusing the same stack using the internal copy_elem func
-struct CopyElemSf {
+struct CopyFrame {
     const Elem* other_ptr;
     size_t other_i;
     Elem* copy_ptr;
 };
 
 // an internal "overload" of the Elem::from_other function that allows us to reuse the same stack when we need to copy a lot of elements at a time
-Elem copy_elem(const Elem& other, std::stack<CopyElemSf>& stack) noexcept {
+Elem copy_elem(const Elem& other, std::stack<CopyFrame>& stack) noexcept {
     Elem elem(other.tag, other.attrs);
 
     stack.emplace(&other, 0, &elem);
 
     while (!stack.empty()) {
-        CopyElemSf& top = stack.top();
+        CopyFrame& top = stack.top();
 
         auto& copy = top.copy_ptr;
         auto curr = top.other_ptr;
@@ -1120,7 +1136,7 @@ Elem copy_elem(const Elem& other, std::stack<CopyElemSf>& stack) noexcept {
 }
 
 // an internal "overload" of the Node::from_other function that allows us to reuse a stack in the case the node is an elem
-Node copy_node(const Node& other, std::stack<CopyElemSf>& stack) {
+Node copy_node(const Node& other, std::stack<CopyFrame>& stack) {
     if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&other.data))
         return Node(std::make_unique<Elem>(copy_elem(**elem_ptr, stack)));
     else if (auto cmnt = std::get_if<Cmnt>(&other.data))
@@ -1132,7 +1148,7 @@ Node copy_node(const Node& other, std::stack<CopyElemSf>& stack) {
 }
 
 Elem Elem::from_other(const Elem& other) noexcept {
-    std::stack<CopyElemSf> stack;
+    std::stack<CopyFrame> stack;
     return copy_elem(other, stack);
 }
 
@@ -1180,7 +1196,7 @@ Elem& Elem::operator=(const Elem& other) {
     std::vector<Node> temp_nodes;
     temp_nodes.reserve(other.children.size());
 
-    std::stack<CopyElemSf> stack;
+    std::stack<CopyFrame> stack;
 
     for (const Node& node: other.children) {
         // we use the copy_node function when copying these nodes so that we can reuse the stack in the case we have multiple elements to copy.
@@ -1224,17 +1240,17 @@ bool xtree::operator==(const Elem& elem, const Elem& other)  {
     if (elem.children.size() != other.children.size())
         return false;
 
-    struct Sf {
+    struct Frame {
         const Elem* lhs_ptr;
         const Elem* rhs_ptr;
         size_t i;
     };
 
-    std::stack<Sf> stack;
+    std::stack<Frame> stack;
     stack.emplace(&elem, &other, 0);
 
     while (!stack.empty()) {
-        Sf& top = stack.top();
+        Frame& top = stack.top();
         auto lhs = top.lhs_ptr;
         auto rhs = top.rhs_ptr;
 
@@ -1284,6 +1300,45 @@ bool xtree::operator==(const Document& document, const Document& other) {
             return false;
 
     return true;
+}
+
+//Elem::~Elem() = default;
+
+Elem::~Elem() {
+    if (children.empty())
+        return;
+
+    struct Frame {
+        Elem* ptr;
+        size_t i;
+    };
+
+    // we manually delete all elems in the hierarchy rather than using recursive destruction
+    std::stack<Frame> stack;
+    stack.emplace(this, 0);
+
+    while (!stack.empty()) {
+        Frame& top = stack.top();
+        Elem* curr = top.ptr;
+
+        if (top.i < curr->children.size()) {
+            auto& child = curr->children[top.i++];
+            if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&child.data)) {
+                // we release this element into a pointer we can delete manually
+                stack.emplace(elem_ptr->release(), 0);
+            }
+        }
+        else {
+            // we don't free this using delete, we can't be sure if it was allocated dynamically or not
+            if (curr != this) {
+                // remove all children to make sure we don't start a recursive call chain on freed memory
+                curr->children.clear();
+                // we know any non-this pointer is allocated dynamically because it was in the unique_ptr
+                delete curr;
+            }
+            stack.pop();
+        }
+    }
 }
 
 std::ostream& xtree::operator<<(std::ostream& os, const Attr& attr) {
@@ -1369,16 +1424,16 @@ std::ostream& xtree::operator<<(std::ostream& os, const BaseNode& node) {
 }
 
 std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
-    struct Sf {
+    struct Frame {
         const Elem* ptr;
         size_t i;
     };
 
-    std::stack<Sf> stack;
+    std::stack<Frame> stack;
     stack.emplace(&elem, 0);
 
     while (!stack.empty()) {
-        Sf& top = stack.top();
+        Frame& top = stack.top();
 
         auto curr = top.ptr;
         if (top.i == 0) {

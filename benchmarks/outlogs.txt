@@ -1,33 +1,33 @@
 Parsing
                           File path      Mode     Runs count           File size     Total time        Average time     Throughput           Allocated          Node count
-      ../input/employee_records.xml      File       100 runs       10.50 kb/file       14.67 ms        0.15 ms/file     71.60 mb/s       44.42 kb/file      480 nodes/file
-         ../input/plant_catalog.xml      File       100 runs        8.74 kb/file       12.95 ms        0.13 ms/file     67.50 mb/s       42.90 kb/file      470 nodes/file
-         ../input/books_catalog.xml    Memory      1000 runs        4.41 kb/file       27.96 ms        0.03 ms/file    157.88 mb/s       17.63 kb/file      158 nodes/file
-    ../input/employee_hierarchy.xml    Memory      1000 runs        3.14 kb/file       13.81 ms        0.01 ms/file    227.03 mb/s        7.00 kb/file       71 nodes/file
-            ../input/book_store.xml    Memory      1000 runs        0.97 kb/file        6.73 ms        0.01 ms/file    144.73 mb/s        4.98 kb/file       45 nodes/file
-              ../input/gie_file.xml    Memory        10 runs     1051.99 kb/file       28.75 ms        2.88 ms/file    365.86 mb/s     2067.71 kb/file     5439 nodes/file
-             ../input/gie_file2.xml    Memory        10 runs     1030.14 kb/file       30.21 ms        3.02 ms/file    341.01 mb/s     1995.04 kb/file     4295 nodes/file
-           ../input/random_dump.xml      File         1 runs    80753.04 kb/file     1065.23 ms     1065.23 ms/file     75.81 mb/s   243748.01 kb/file  1778160 nodes/file
-           ../input/random_dump.xml    Memory         1 runs    80753.04 kb/file      663.10 ms      663.10 ms/file    121.78 mb/s   243748.01 kb/file  1778160 nodes/file
+      ../input/employee_records.xml      File       100 runs       10.61 kb/file       13.08 ms        0.13 ms/file     81.13 mb/s       43.99 kb/file      480 nodes/file
+         ../input/plant_catalog.xml      File       100 runs        8.74 kb/file       11.33 ms        0.11 ms/file     77.15 mb/s       42.58 kb/file      470 nodes/file
+         ../input/books_catalog.xml    Memory      1000 runs        4.41 kb/file       22.70 ms        0.02 ms/file    194.49 mb/s       16.72 kb/file      158 nodes/file
+    ../input/employee_hierarchy.xml    Memory      1000 runs        3.14 kb/file       10.67 ms        0.01 ms/file    294.02 mb/s        6.93 kb/file       71 nodes/file
+            ../input/book_store.xml    Memory      1000 runs        0.97 kb/file        5.50 ms        0.01 ms/file    177.20 mb/s        4.93 kb/file       45 nodes/file
+              ../input/gie_file.xml    Memory        10 runs     1052.62 kb/file       24.28 ms        2.43 ms/file    433.49 mb/s     1471.90 kb/file     5439 nodes/file
+             ../input/gie_file2.xml    Memory        10 runs     1030.78 kb/file       22.79 ms        2.28 ms/file    452.35 mb/s     1399.25 kb/file     4295 nodes/file
+           ../input/random_dump.xml      File         1 runs    80788.26 kb/file     1024.25 ms     1024.25 ms/file     78.88 mb/s   222507.64 kb/file  1777693 nodes/file
+           ../input/random_dump.xml    Memory         1 runs    80788.26 kb/file      623.23 ms      623.23 ms/file    129.63 mb/s   222507.64 kb/file  1777693 nodes/file
 
 Printing
                           File path     Runs count          Total time        Average time
-              ../input/gie_file.xml       100 runs           686.27 ms        6.86 ms/file
-             ../input/gie_file2.xml       100 runs          1107.57 ms       11.08 ms/file
-           ../input/random_dump.xml         3 runs          1320.46 ms      440.15 ms/file
+              ../input/gie_file.xml       100 runs           726.97 ms        7.27 ms/file
+             ../input/gie_file2.xml       100 runs          1122.44 ms       11.22 ms/file
+           ../input/random_dump.xml         3 runs          1323.91 ms      441.30 ms/file
 
 Copy + Normalization
                           File path     Runs count          Total time        Average time        Remove count
-           ../input/random_dump.xml         3 runs          2341.64 ms      780.55 ms/file       2663127 nodes
+           ../input/random_dump.xml         3 runs          2225.55 ms      741.85 ms/file       2668461 nodes
 
 CopyAssign + Equality
                           File path     Runs count          Total time        Average time
-              ../input/gie_file.xml       100 runs            58.14 ms        0.58 ms/file
-             ../input/gie_file2.xml       100 runs            47.93 ms        0.48 ms/file
-           ../input/random_dump.xml         3 runs          1590.01 ms      530.00 ms/file
+              ../input/gie_file.xml       100 runs            52.13 ms        0.52 ms/file
+             ../input/gie_file2.xml       100 runs            43.95 ms        0.44 ms/file
+           ../input/random_dump.xml         3 runs          1609.29 ms      536.43 ms/file
 
 Copy + Equality
                           File path     Runs count          Total time        Average time
-              ../input/gie_file.xml       100 runs            57.24 ms        0.57 ms/file
-             ../input/gie_file2.xml       100 runs            47.83 ms        0.48 ms/file
-           ../input/random_dump.xml         3 runs          1523.07 ms      507.69 ms/file
+              ../input/gie_file.xml       100 runs            53.82 ms        0.54 ms/file
+             ../input/gie_file2.xml       100 runs            43.55 ms        0.44 ms/file
+           ../input/random_dump.xml         3 runs          1603.05 ms      534.35 ms/file
