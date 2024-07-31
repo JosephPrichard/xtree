@@ -9,14 +9,43 @@
 #include <optional>
 #include "xtree.hpp"
 
+#define RECUR_PRINT false
+#define RECUR_NORMAL false
+#define RECUR_COPY false
+#define RECUR_CMP true
+#define RECUR_DTOR true
+
 using namespace xtree;
 
 typedef long long i64;
 typedef int i32;
 
+struct StreamReader {
+    std::istream& stream;
+
+    explicit StreamReader(std::istream& stream) : stream(stream) {}
+
+    i32 get() {
+        return stream.get();
+    }
+};
+
+struct StringReader {
+    const char* data;
+    const size_t size;
+    int position = 0;
+
+    explicit StringReader(const char* data, size_t size) : data(data), size(size) {}
+
+    i32 get() {
+        if (position >= size)
+            return EOF;
+        return data[position++];
+    }
+};
+
 struct RingBuffer {
     static constexpr int LB_SIZ = 12; // maximum number of characters we can look ahead
-
     i32 lbuf[LB_SIZ] = {0};
     int head = 0;
     int tail = 0;
@@ -42,84 +71,14 @@ struct RingBuffer {
     }
 };
 
-struct StringReader {
+template <class Reader>
+struct Parser {
     int row = 1;
     int col = 1;
-    const char* data;
-    const size_t size;
-    size_t position = 0;
-
-    StringReader(const char* data, size_t size) : data(data), size(size) {}
-
-    i64 read_char() {
-        i64 c = get_char();
-        if (c == EOF)
-            return EOF;
-
-        if (c == '\n') {
-            col = 1;
-            row += 1;
-        }
-        else {
-            col += 1;
-        }
-        return c;
-    }
-
-    ParseException parse_error(const std::string& message, ParseError code) const {
-        std::string error_message = message + " at row: " + std::to_string(row) + ", col: " + std::to_string(col);
-        return ParseException(error_message, code);
-    }
-
-    void consume(size_t len) {
-        for (size_t i = 0; i < len; i++) read_char();
-    }
-
-    i64 get_char() {
-        if (position >= size) {
-            return EOF;
-        }
-        return data[position++];
-    }
-
-    i64 peek_char() const {
-        if (position >= size) {
-            return EOF;
-        }
-        return data[position];
-    }
-
-    i64 peek_ahead(int index) const {
-        if (position + index >= size) {
-            return EOF;
-        }
-        return data[position + index];
-    }
-
-    bool read_match(const std::string& str, int skip) {
-        for (size_t i = 0; i < str.size(); i++) {
-            auto index = position + i + skip;
-            if (index >= size) {
-                return false;
-            }
-            char c = data[index];
-            if (c != str[i]) {
-                return false;
-            }
-        }
-
-        consume(skip + str.size());
-        return true;
-    }
-};
-
-struct StreamReader {
-    int row = 1;
-    int col = 1;
-    std::ifstream& file;
+    Reader& reader;
     RingBuffer rb;
 
-    explicit StreamReader(std::ifstream& file) : file(file) {}
+    explicit Parser(Reader& reader) : reader(reader) {}
 
     i64 read_char() {
         i64 c = get_char();
@@ -134,11 +93,6 @@ struct StreamReader {
             col += 1;
         }
         return c;
-    }
-
-    ParseException parse_error(const std::string& message, ParseError code) const {
-        std::string error_message = message + " at row: " + std::to_string(row) + ", col: " + std::to_string(col);
-        return ParseException(error_message, code);
     }
 
     void consume(size_t len) {
@@ -148,7 +102,7 @@ struct StreamReader {
     i64 get_char() {
         i32 c;
         if (rb.size == 0)
-            c = file.get();
+            c = reader.get();
         else
             c = rb.pop();
         return c;
@@ -161,7 +115,7 @@ struct StreamReader {
     i64 peek_ahead(int index) {
         int buf_size = rb.size;
         for (int i = 0; i < index - buf_size + 1; i++) {
-            int c = file.get();
+            int c = reader.get();
             if (c == EOF) {
                 return EOF;
             }
@@ -178,7 +132,7 @@ struct StreamReader {
 
         // we will read maximally skip + str_size ahead in the scan loop, so ensure the lbuf is pre-filled
         for (int i = 0; i < skip + str_size - buf_size; i++) {
-            int c = file.get();
+            int c = reader.get();
             if (c == EOF) {
                 return false;
             }
@@ -198,36 +152,9 @@ struct StreamReader {
         consume(skip + str.size());
         return true;
     }
-};
-
-template <class Reader>
-struct Parser {
-    Reader& reader;
-
-    explicit Parser(Reader& reader) : reader(reader) {}
-
-    i64 peek_char() {
-        return reader.peek_char();
-    }
-
-    i64 peek_ahead(int index) {
-        return reader.peek_ahead(index);
-    }
-
-    i64 read_char() {
-        return reader.read_char();
-    }
-
-    bool read_match(const std::string& str, int skip) {
-        return reader.read_match(str, skip);
-    }
 
     bool read_match(const std::string& str) {
         return read_match(str, 0);
-    }
-
-    void consume(int len) {
-        return reader.consume(len);
     }
 
     void skip_spaces() {
@@ -246,7 +173,8 @@ struct Parser {
     }
 
     ParseException parse_error(const std::string& message, ParseError code) const {
-        return reader.parse_error(message, code);
+        std::string error_message = message + " at row: " + std::to_string(row) + ", col: " + std::to_string(col);
+        return ParseException(error_message, code);
     }
 
     static std::string char_string(i64 c) {
@@ -748,6 +676,8 @@ struct Parser {
                         throw parse_error("expected xml meta tag to have an encoding field", ParseError::InvalidXmlMeta);
                     if (eattr->value != "UTF-8")
                         throw parse_error("only supports UTF-8 encodings, got " + eattr->value, ParseError::InvalidXmlMeta);
+
+                    parsed_meta = true;
                 }
 
                 document.children.emplace_back(std::move(decl));
@@ -916,6 +846,7 @@ void Elem::remove_elems(const std::string& rtag) {
         if (back != 0) {
             auto index = i - back;
             children[index] = std::move(*node_ptr);
+            node_ptr = &children[index];
         }
 
         if (node_ptr->is_elem() && node_ptr->as_elem().tag == rtag)
@@ -961,6 +892,51 @@ void Document::remove_decls(const std::string& rtag) {
     children.shrink_to_fit();
 }
 
+#if RECUR_NORMAL
+size_t Elem::normalize() {
+    size_t remove_count = 0;
+
+    Text* prev_text = nullptr;
+    size_t back = 0;
+
+    for (size_t i = 0; i < children.size(); i++) {
+        Node* child_ptr = &children[i];
+
+        if (back != 0) {
+            // shift the element back one by moving, depending on how many elements have been removed so far
+            auto index = i - back;
+            children[index] = std::move(*child_ptr);
+            child_ptr = &children[index];
+        }
+
+        if (child_ptr->is_text()) {
+            auto& child_text = child_ptr->as_text();
+            if (prev_text != nullptr) {
+                prev_text->data += child_text.data;
+                remove_count++;
+                back++;
+            }
+            else {
+                prev_text = &child_text;
+            }
+        }
+        else {
+            if (child_ptr->is_elem()) {
+                auto elem = &child_ptr->as_elem();
+                remove_count += elem->normalize();
+            }
+            prev_text = nullptr;
+        }
+    }
+
+    children.erase(children.end() - static_cast<long long>(back), children.end());
+    children.shrink_to_fit();
+
+    return remove_count;
+}
+#endif
+
+#if !RECUR_NORMAL
 size_t Elem::normalize() {
     std::stack<Elem*> stack;
     stack.push(this);
@@ -1012,6 +988,7 @@ size_t Elem::normalize() {
 
     return remove_count;
 }
+#endif
 
 Docstats xtree::stat_document(Document& document) {
     Docstats stats{0, 0};
@@ -1082,6 +1059,16 @@ Docstats xtree::stat_document(Document& document) {
     return stats;
 }
 
+#if RECUR_COPY
+Elem Elem::from_other(const Elem& other) {
+    Elem elem(other.tag, other.attrs);
+    for (auto& child : other.children)
+        elem.children.push_back(Node::from_other(child));
+    return elem;
+}
+#endif
+
+#if !RECUR_COPY
 // a stack frame for the copy element function to avoid a recursive-loop
 // exists as a top level declaration so multiple elements can be copied reusing the same stack using the internal copy_elem func
 struct CopyFrame {
@@ -1091,7 +1078,7 @@ struct CopyFrame {
 };
 
 // an internal "overload" of the Elem::from_other function that allows us to reuse the same stack when we need to copy a lot of elements at a time
-Elem copy_elem(const Elem& other, std::stack<CopyFrame>& stack) noexcept {
+Elem copy_elem(const Elem& other, std::stack<CopyFrame>& stack) {
     Elem elem(other.tag, other.attrs);
 
     stack.emplace(&other, 0, &elem);
@@ -1147,10 +1134,11 @@ Node copy_node(const Node& other, std::stack<CopyFrame>& stack) {
         throw std::runtime_error("unknown variant case");
 }
 
-Elem Elem::from_other(const Elem& other) noexcept {
+Elem Elem::from_other(const Elem& other) {
     std::stack<CopyFrame> stack;
     return copy_elem(other, stack);
 }
+#endif
 
 Node Node::from_other(const Node& other) {
     if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&other.data))
@@ -1185,6 +1173,33 @@ Document& Document::operator=(const Document& other) {
     return *this;
 }
 
+#if RECUR_COPY
+Elem& Elem::operator=(const Elem& other) {
+    if (this == &other)
+        return *this;
+
+    tag = other.tag;
+    attrs = other.attrs;
+
+    // we must store the copied nodes somewhere before we clear and append since other.child_nodes might be a child of child_nodes
+    std::vector<Node> temp_nodes;
+    temp_nodes.reserve(other.children.size());
+
+    for (const Node& node: other.children) {
+        // starts a recursive call-chain to copy the entire element hierarchy
+        temp_nodes.push_back(Node::from_other(node));
+    }
+
+    children.clear();
+    for (auto& node: temp_nodes) {
+        children.push_back(std::move(node));
+    }
+
+    return *this;
+}
+#endif
+
+#if !RECUR_COPY
 Elem& Elem::operator=(const Elem& other) {
     if (this == &other)
         return *this;
@@ -1210,6 +1225,7 @@ Elem& Elem::operator=(const Elem& other) {
 
     return *this;
 }
+#endif
 
 Node& Node::operator=(Node&& other) noexcept {
     if (this == &other)
@@ -1233,6 +1249,22 @@ bool xtree::operator==(const Node& node, const Node& other) {
     return node.data == other.data;
 }
 
+#if RECUR_CMP
+bool xtree::operator==(const Elem& elem, const Elem& other)  {
+    if (elem.tag != other.tag || elem.attrs != other.attrs)
+        return false;
+    if (elem.children.size() != other.children.size())
+        return false;
+
+    for (int i = 0; i < elem.children.size(); i++)
+        if (elem.children[i] != other.children[i])
+            return false;
+
+    return true;
+}
+#endif
+
+#if !RECUR_CMP
 bool xtree::operator==(const Elem& elem, const Elem& other)  {
     // base case: just check if the elem fields themselves are equal - if not we don't even need to check the children
     if (elem.tag != other.tag || elem.attrs != other.attrs)
@@ -1272,7 +1304,8 @@ bool xtree::operator==(const Elem& elem, const Elem& other)  {
                 auto elem_rhs_child = &rhs_child.as_elem();
                 stack.emplace(elem_lhs_child, elem_rhs_child, 0); // we'll handle this child in the next stack frame...
             }
-            else if (lhs_child.data != rhs_child.data ) { // otherwise just check if the variant itself - we don't care if they are, and we stop early if they're not
+            else if (lhs_child.data != rhs_child.data ) {
+                // otherwise just check if the variant itself - we don't care if they are, and we stop early if they're not equal
                 return false;
             }
         } else {
@@ -1282,6 +1315,7 @@ bool xtree::operator==(const Elem& elem, const Elem& other)  {
 
     return true;
 }
+#endif
 
 bool xtree::operator==(const Document& document, const Document& other) {
     if (document.root != nullptr && other.root != nullptr) {
@@ -1302,8 +1336,11 @@ bool xtree::operator==(const Document& document, const Document& other) {
     return true;
 }
 
-//Elem::~Elem() = default;
+#if RECUR_DTOR
+Elem::~Elem() = default;
+#endif
 
+#if !RECUR_DTOR
 Elem::~Elem() {
     if (children.empty())
         return;
@@ -1325,11 +1362,12 @@ Elem::~Elem() {
             auto& child = curr->children[top.i++];
             if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&child.data)) {
                 // we release this element into a pointer we can delete manually
-                stack.emplace(elem_ptr->release(), 0);
+                if (elem_ptr != nullptr)
+                    stack.emplace(elem_ptr->release(), 0);
             }
         }
         else {
-            // we don't free this using delete, we can't be sure if it was allocated dynamically or not
+            // we don't free this using delete, because we can't be sure if it was allocated dynamically or not
             if (curr != this) {
                 // remove all children to make sure we don't start a recursive call chain on freed memory
                 curr->children.clear();
@@ -1340,6 +1378,7 @@ Elem::~Elem() {
         }
     }
 }
+#endif
 
 std::ostream& xtree::operator<<(std::ostream& os, const Attr& attr) {
     os << attr.name << "=" << "\"";
@@ -1423,6 +1462,26 @@ std::ostream& xtree::operator<<(std::ostream& os, const BaseNode& node) {
     return os;
 }
 
+#if RECUR_PRINT
+std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
+    os << "<" << elem.tag;
+    for (size_t i = 0; i < elem.attrs.size(); i++) {
+        if (i == 0)
+            os << " ";
+        os << elem.attrs[i];
+        if (i < elem.attrs.size() - 1)
+            os << " ";
+    }
+    os << "> ";
+    for (const Node& child : elem.children)
+        os << child;
+
+    os << "</" << elem.tag << "> ";
+    return os;
+}
+#endif
+
+#if !RECUR_PRINT
 std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
     struct Frame {
         const Elem* ptr;
@@ -1472,3 +1531,4 @@ std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
 
     return os;
 }
+#endif

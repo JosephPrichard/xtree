@@ -1,26 +1,28 @@
 # XTree
-An idiomatic C++20 library for the hierarchical tree based serialization format called XML.
+XTree is a C++20 library for the hierarchical tree based serialization format called XML, that tries to be easy to use yet flexible and performant.
 
-XTree uses an iterative variant of the recursive descent algorithm to parse a set of mutually recursive structures into DOM-like tree structure. The tree structure enforces ownership using `std::unique_ptr` from parent
-to child nodes. XTree provides a myriad of utility functions to modify, merge, and analyze XML documents.
-XTree supports ASCII and UTF-8 encodings for XML documents.
+## What it Does
 
-XTree was primarily created as a way to sharpen my modern C++ skills.
+XTree uses a Document Object Model (DOM), meaning the XML data is parsed into a C++ objects that can be analyzed and modified, and then written to disk or another output stream. You can also construct an XML document from scratch with C++ objects and write it to disk or another output stream. You can also to stream XML from an input stream without creating a document first. 
 
-An example XML file:
-```xml
-<book id="bk101">
-  <author> Gambardella, Matthew </author>
-  <title> XML Developer's Guide </title>
-  <genre> Computer </genre>
-  <price> 44.95 </price>
-  <publish_date> 2000-10-01 </publish_date>
-  <description> An in-depth look at creating applications
-  with XML. </description>
-</book>
-```
+XTree uses an iterative variant of the recursive descent algorithm to parse a set of mutually recursive structures into DOM-like tree structure. XTree provides a myriad of utility functions - making it effective at creating XML documents or modifying documents once they are parsed.
 
-### Usage
+Ideally, XTree is used when your you need to parse one or many XML documents, modify them, and serialize them back to a file.
+
+### Utilities
+XTree supports utility methods to search for nodes, remove nodes, normalize the tree, print to an output stream, or copy the tree.
+XTree uses move constructors to provide move semantics as a default way of passing element trees around.
+
+### Encodings
+Supports UTF-8 encodings for XML documents. All XML documents are assumed to be UTF-8.
+
+### Memory Model
+`Node` structures own their data, including strings and children nodes. Ownership to child nodes is enforced using `std::unique_ptr`. Data for the node structures is allocated on the heap. Since node structures are only destroyed when their parents are destroyed - you can move nodes to and from different `Document` instances, or out of one. `Node` structures store the different cases using `std::variant` - a type-safe tagged union from C++17.
+
+### Error Handling
+XTree uses the `ParseException` and `NodeWalkException` to report errors while parsing or walking the tree.
+
+## Usage
 
 Clone from this github repository.
 ```shell
@@ -40,98 +42,79 @@ Include the correct headers in the files where you need to use the library.
 #include "../xtree/include/xtree.hpp"
 ```
 
-### Library
+## Examples
 
-Deserialize a document from a string or a file using factory methods methods.
+Load and parse an XML file.
 
 ```c++
-xtree::Document document1 = xtree::Document::from_string(str);
-xtree::Document document2 = xtree::Document::from_file(file_path);
-xtree::Document document3;
+// parses into a tree without modifying the input string
+xtree::Document first_document = xtree::Document::from_string("<Root> <Child> Hello World! </Child> </Root>");
+
+// parses the file into a tree without reading the file into a string
+xtree::Document second_document = xtree::Document::from_file("file.txt");
 ```
 
-Serialize a document into a string or file using `xtree::Document::serialize()` or the `<<` operator.
+Send the XML document to an output stream or a string.
 ```c++
+// spits the document out to an in memory string
 std::string str = document.serialize();
 
+// alternatively, spit the document out to an output stream
 std::ofstream ofs;
 ofs.open("file.xml", std::ofstream::out | std::ofstream::trunc);
 ofs << document;
 ```
 
-Nodes on the document tree can be accessed or modified using utility functions.
+Lookup or modify some information, then spit back to the file.
 ```c++
-xtree::Elem* child = document.expect_elem("Manager").expect_elem("Programmer");
-std::string& value = document.expect_elem("Employee").expect_attr("name").value;
+// open the document from a file
+xtree::Document document = xtree::Document::from_file("file.txt");
 
-document.add_node(xtree::Elem("Ceo"));
-document.select_elem("Ceo")->add_attribute("name", "Joseph");
-```
+// lookup some data from the document
+xtree::Elem& child = document.expect_root().expect_elem("Manager").expect_elem("Programmer");
+std::string& value = document.expect_root().expect_elem("Employee").expect_attr("name").value;
 
-```c++
-xtree::Document document;
+// lookup some data then modify it
+document.expect_elem("Boss").add_attr("name", child.nth_attr(0).value);
 
-xtree::Decl decl("xml", {{"version", "1.0"}, {"encoding", "UTF-8"}});
+// remove some data and retrieve whatever was removed
+std::optional<xtree::Attr> removed_attr = document.expect_root().remove_attr("name");
+std::optional<xtree::Elem> removed_elem = document.expect_root().remove_elem("Child");
+
+// move the root out of the document
+xtree::Elem root = std::move(document.root);
+
+// insert a new root element
 xtree::Elem root = xtree::Elem("Son", {{"name", "John"}, {"age", "22"}})
     .add_node(xtree::Elem("Dad", {{"name", "Bill"}, {"age", "57"}}))
     .add_node(xtree::Elem("Mom", {{"name", "Mary"}, {"age", "54"}}));
-
-document.add_node(decl);
-document.add_root(std::move(root));
-```
-
-You can remove elems and attributes from the tree using utility functions.
-
-```c++
-xtree::Document document;
-
-xtree::Decl decl("xml", {{"version", "1.0"}, {"encoding", "UTF-8"}});
-xtree::Elem root = xtree::Elem("Parent", {{"name", "Jack"}})
-    .add_node(xtree::Elem("Child1", {{"name", "Bob"}}))
-    .add_node(xtree::Elem("Child2", {{"name", "Tom"}}));
-
-document.add_node(decl);
 document.add_root(std::move(root));
 
-std::optional<xtree::Attr> removed_attr = document.expect_root().remove_attr("`name`");
-std::optional<xtree::Elem> removed_elem = document.expect_root().remove_elem("Child1");
-```
-
-Copy fragments or the entirety of a document using factory methods and operators.
-
-```c++
-xtree::Document document1 = xtree::Document::from_file("employees1.xml");
-
-xtree::Document document2 = xtree::Document::from_other(document1);
-xtree::Elem elem2 = xtree::Elem::from_other(document1.expect_root());
-```
-
-```c++
-xtree::Document document1 = xtree::Document::from_file("employees1.xml");
-xtree::Document document2 = xtree::Document::from_file("employees2.xml");
-
-xtree::Elem& employees1 = document1.root->expect_elem("Employees");
-xtree::Elem& employees2 = document2.root->expect_elem("Employees");
-
-employees1 = employees2; // copy assignment operator is called
+// then spit the modified document to a file
+std::ofstream ofs;
+ofs.open("file.xml", std::ofstream::out | std::ofstream::trunc);
+ofs << document;
 ```
 
 Normalize to merge adjacent text nodes.
 ```c++
 xtree::Document document;
 
+// create an element tree structure
 xtree::Elem root = xtree::Elem("Root")
     .add_node(xtree::Text("Hello"))
     .add_node(xtree::Text("World"));
 document.add_root(std::move(root));
 
+// normalization will merge the "Hello" and" World" text nodes into "Hello World"
 document.normalize();
 ```
 
-Child nodes of elements and documents can be iterated over.
+Iterate over the children of documents and elements.
 ```c++
 xtree::Document document;
 
+// a document's iterator can be accessed using Document::iterator
 for (xtree::BaseNode& child : document) {
     if (child->is_decl())
         std::cout << child->as_decl().tag << std::endl;
@@ -141,6 +124,7 @@ for (xtree::BaseNode& child : document) {
         std::cout << child->as_dtd().text << std::endl;
 }
 
+// an elem's iterator can be accessed using Elem::iterator
 for (xtree::Node& child : document.expect_root()) {
     if (child->is_elem())
         std::cout << child->as_elem().tag << std::endl;

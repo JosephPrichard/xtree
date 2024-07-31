@@ -9,7 +9,7 @@
 #include "../include/xtree.hpp"
 
 void fail_test(const std::string& expected, const std::string& actual) {
-    printf("Failed test\nExpected:\n%s\nGot:\n%s\n\n", expected.c_str(), actual.c_str());
+    fprintf(stderr, "Failed test\nexpected:\n%s\nbut got:\n%s\n\n", expected.c_str(), actual.c_str());
 }
 
 void test_small_document() {
@@ -255,7 +255,7 @@ void test_unclosed() {
     try {
         auto str = R"(<Test TestId="0001" TestType="CMD"> <Name/>)";
         auto document = xtree::Document::from_string(str);
-        printf("Expected document parse to throw an exception\n");
+        fprintf(stderr, "Expected document parse to throw an exception\n");
     }
     catch (xtree::ParseException& ex) {
         if (ex.code != xtree::ParseError::EndOfStream) {
@@ -264,7 +264,7 @@ void test_unclosed() {
         return;
     }
     catch (std::exception& ex) {
-        printf("Threw %s\n", ex.what());
+        fprintf(stderr, "Threw %s\n", ex.what());
     }
 }
 
@@ -272,7 +272,7 @@ void test_unequal_tags() {
     try {
         auto str = "<Test> <Name/> </Test1>";
         auto document = xtree::Document::from_string(str);
-        printf("Expected document parse to throw an exception\n");
+        fprintf(stderr, "Expected document parse to throw an exception\n");
     }
     catch (xtree::ParseException& ex) {
         if (ex.code != xtree::ParseError::CloseTagMismatch) {
@@ -281,7 +281,7 @@ void test_unequal_tags() {
         return;
     }
     catch (std::exception& ex) {
-        printf("Threw %s\n", ex.what());
+        fprintf(stderr, "Threw %s\n", ex.what());
     }
 }
 
@@ -289,7 +289,7 @@ void test_multiple_roots() {
     try {
         auto str = "<Test> </Test> <Test1> </Test>";
         auto document = xtree::Document::from_string(str);
-        printf("Expected document parse to throw an exception\n");
+        fprintf(stderr, "Expected document parse to throw an exception\n");
     }
     catch (xtree::ParseException& ex) {
         if (ex.code != xtree::ParseError::MultipleRoots) {
@@ -298,7 +298,7 @@ void test_multiple_roots() {
         return;
     }
     catch (std::exception& ex) {
-        printf("Threw %s\n", ex.what());
+        fprintf(stderr, "Threw %s\n", ex.what());
     }
 }
 
@@ -624,27 +624,27 @@ void test_walk_doc() {
 
     auto& attr_value = document.expect_root().select_attr("Id")->value;
     if (attr_value != "123") {
-        printf("Expected '123' for attr but got %s\n", attr_value.c_str());
+        fprintf(stderr, "Expected '123' for attr but got %s\n", attr_value.c_str());
     }
 
     auto& tag = document.expect_root().select_elem("Test")->tag;
     if (tag != "Test") {
-        printf("Expected 'Test' for tag but got %s\n", tag.c_str());
+        fprintf(stderr, "Expected 'Test' for _tag but got %s\n", tag.c_str());
     }
 
     auto attr2 = document.expect_root().select_attr("Nope");
     if (attr2 != nullptr) {
-        printf("Expected nullptr for attr but got %s\n", attr2->value.c_str());
+        fprintf(stderr, "Expected nullptr for attr but got %s\n", attr2->value.c_str());
     }
 
     std::vector tags = {"xml", "xmlmeta"};
     int i = 0;
     for (auto& child: document) {
         if (!child.is_decl()) {
-            printf("Expected nodes should be decl nodes\n");
+            fprintf(stderr, "Expected nodes should be decl nodes\n");
         }
         if (child.as_decl().tag != tags[i]) {
-            printf("Expected %s for decl tag but got %s\n", tags[i], child.as_decl().tag.c_str());
+            fprintf(stderr, "Expected %s for decl _tag but got %s\n", tags[i], child.as_decl().tag.c_str());
         }
         i++;
     }
@@ -668,10 +668,10 @@ void test_walk_doc_root() {
     int i = 0;
     for (auto& child: document.expect_root()) {
         if (!child.is_elem()) {
-            printf("Expected nodes should be elem nodes\n");
+            fprintf(stderr, "Expected nodes should be elem nodes\n");
         }
         if (child.as_elem().tag != tags[i]) {
-            printf("Expected %s for elem tag but got %s\n", tags[i], child.as_elem().tag.c_str());
+            fprintf(stderr, "Expected %s for elem _tag but got %s\n", tags[i], child.as_elem().tag.c_str());
         }
         i++;
     }
@@ -690,14 +690,14 @@ void test_walk_tree() {
                 auto& elem = node.as_elem();
                 auto& etag = elem_tags[ecnt++];
                 if (elem.tag != etag)
-                    printf("Expected %s for elem tag but got %s\n", etag.c_str(), elem.tag.c_str());
+                    fprintf(stderr, "Expected %s for elem _tag but got %s\n", etag.c_str(), elem.tag.c_str());
             }
         },
         [](xtree::BaseNode& node) {
             if (node.is_decl()) {
                 auto& decl = node.as_decl();
                 if (node.as_decl().tag != "xml")
-                    printf("Expected xml for decl tag but got %s\n", decl.tag.c_str());
+                    fprintf(stderr, "Expected xml for decl _tag but got %s\n", decl.tag.c_str());
             }
         });
 }
@@ -710,7 +710,7 @@ void test_stat_tree() {
 
     xtree::Docstats expected{5, 642};
     if (memcmp(&stats, &expected, sizeof(xtree::Docstats)) != 0) {
-        printf("Expected doc stats to be nodes: %zu, mem: %zu but got nodes: %zu, mem: %zu\n",
+        fprintf(stderr, "Expected doc stats to be nodes: %zu, mem: %zu but got nodes: %zu, mem: %zu\n",
             expected.nodes_count, expected.total_mem, stats.nodes_count, stats.total_mem);
     }
 }
@@ -742,7 +742,7 @@ void test_destructor() {
     auto size2 = allocated;
 
     if (size2 - size1 != 0) {
-        printf("Expected alloc size difference to be 0, got: %zd\n", size2 - size1);
+        fprintf(stderr, "Expected alloc size difference to be 0, got: %zd\n", size2 - size1);
     }
 }
 

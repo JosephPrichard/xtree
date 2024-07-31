@@ -14,11 +14,11 @@ xtree::Document create_benchmark_file(const std::string& file_path, int node_cou
     std::random_device seed;
     std::mt19937 gen{seed()};
 
-    std::uniform_int_distribution<> type_dist{0, 20};
-    std::uniform_int_distribution<> action_dist{0, 3};
-    std::uniform_int_distribution<> short_dist{4, 12};
-    std::uniform_int_distribution<> long_dist{20, 50};
-    std::uniform_int_distribution<> char_dist{97, 122};
+    std::uniform_int_distribution type_dist{0, 20};
+    std::uniform_int_distribution action_dist{0, 3};
+    std::uniform_int_distribution short_dist{4, 12};
+    std::uniform_int_distribution long_dist{20, 50};
+    std::uniform_int_distribution char_dist{97, 122};
 
     std::ofstream file(file_path);
 

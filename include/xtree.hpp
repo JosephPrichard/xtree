@@ -9,13 +9,12 @@
 
 namespace xtree {
 
-// debug flag to add runtime logging for copy constructors and exception functions
-#define DEBUG_XTREE_HD false
+#define DEBUG false
 
 struct NodeWalkException : public std::runtime_error {
     explicit NodeWalkException(std::string&& m) : std::runtime_error(m) {
-#if DEBUG_XTREE_HD
-        printf("Threw a node walk exception %s", m.c_str());
+#if DEBUG
+        fprintf(stderr, "Threw a node walk exception %s\n", m.c_str());
 #endif
     }
 };
@@ -32,19 +31,13 @@ std::ostream& operator<<(std::ostream& os, const Attr& attr);
 struct Text {
     std::string data;
 
-#if DEBUG_XTREE_HD
-    Text() = default;
-
-    Text(Text&&) = default;
-
-    Text(const Text& other) : data(other.data) {
-        printf("Copied data: %s\n", data.c_str());
+    int as_int() const {
+        return std::stoi(data);
     }
 
-    explicit Text(std::string&& data) : data(std::move(data)) {}
-
-    Text& operator=(const Text&) = default;
-#endif
+    float as_float() const {
+        return std::stof(data);
+    }
 
     friend bool operator==(const Text& lhs, const Text& rhs) = default;
 };
@@ -54,22 +47,6 @@ std::ostream& operator<<(std::ostream& os, const Text& text);
 struct Decl {
     std::string tag;
     std::vector<Attr> attrs;
-
-#if DEBUG_XTREE_HD
-    Decl() = default;
-
-    Decl(Decl&&) = default;
-
-    Decl(const Decl& other) : tag(other.tag), attrs(other.attrs) {
-        printf("Copied decl: %s\n", tag.c_str());
-    }
-
-    explicit Decl(std::string tag) : tag(std::move(tag)) {}
-
-    Decl(std::string tag, std::vector<Attr> attrs) : tag(std::move(tag)), attrs(std::move(attrs)) {}
-
-    Decl& operator=(const Decl&) = default;
-#endif
 
     Decl& add_attr(std::string name, std::string value) {
         attrs.emplace_back(std::move(name), std::move(value));
@@ -98,20 +75,6 @@ std::ostream& operator<<(std::ostream& os, const Decl& decl);
 struct Cmnt {
     std::string data;
 
-#if DEBUG_XTREE_HD
-    Cmnt() = default;
-
-    Cmnt(Cmnt&&) = default;
-
-    Cmnt(const Cmnt& other) : data(other.data) {
-        printf("Copied comment: %s\n", data.c_str());
-    }
-
-    explicit Cmnt(std::string text) : data(std::move(text)) {}
-
-    Cmnt& operator=(const Cmnt&) = default;
-#endif
-
     friend bool operator==(const Cmnt& cmnt, const Cmnt& other) = default;
 };
 
@@ -120,20 +83,6 @@ std::ostream& operator<<(std::ostream& os, const Cmnt& cmnt);
 struct Dtd {
     std::string data;
 
-#if DEBUG_XTREE_HD
-    Dtd() = default;
-
-    Dtd(Dtd&&) = default;
-
-    Dtd(const Dtd& other) : data(other.data) {
-        printf("Copied DTD: %s\n", data.c_str());
-    }
-
-    explicit Dtd(std::string text) : data(std::move(text)) {}
-
-    Dtd& operator=(const Dtd&) = default;
-#endif
-
     friend bool operator==(const Dtd& dtd, const Dtd& other) = default;
 };
 
@@ -141,7 +90,7 @@ std::ostream& operator<<(std::ostream& os, const Dtd& dtd);
 
 struct Elem;
 
-using NodeVariant = std::variant<std::unique_ptr<Elem>, Cmnt, Text>; // invariant: ElemPtr cannot point to a null
+using NodeVariant = std::variant<std::unique_ptr<Elem>, Cmnt, Text>; // invariant: Elem cannot point to a null
 
 struct Node {
     NodeVariant data;
@@ -150,7 +99,6 @@ struct Node {
 
     Node(Node&&) = default;
 
-    // we use a copy factory method instead of a copy constructor to avoid copy semantics in favor of move semantics
     static Node from_other(const Node& other);
 
     bool is_cmnt() const {
@@ -235,8 +183,7 @@ struct Elem {
 
     ~Elem();
 
-    // we use a copy factory method of a copy constructor to avoid copy semantics in favor of move semantics
-    static Elem from_other(const Elem& other) noexcept;
+    static Elem from_other(const Elem& other);
 
     Elem(Elem&&) = default;
 
@@ -256,15 +203,19 @@ struct Elem {
 
     std::optional<Elem> remove_elem(const std::string& rtag);
 
+    Node& nth_child(size_t i) {
+        if (i >= children.size())
+            throw NodeWalkException(std::to_string(i) + "th child is out of bounds");
+        return children[i];
+    }
+
+    Attr& nth_attr(size_t i) {
+        if (i >= attrs.size())
+            throw NodeWalkException(std::to_string(i) + "th attr is out of bounds");
+        return attrs[i];
+    }
+
     size_t normalize();
-
-    std::vector<Node>::iterator begin() {
-        return children.begin();
-    }
-
-    std::vector<Node>::iterator end() {
-        return children.end();
-    }
 
     Elem&& add_attr(std::string name, std::string value) && {
         attrs.emplace_back(std::move(name), std::move(value));
@@ -299,6 +250,35 @@ struct Elem {
     Elem& operator=(const Elem& other);
 
     std::string serialize() const;
+
+    class iterator {
+    private:
+        std::vector<Node>::iterator it;
+
+    public:
+        explicit iterator(std::vector<Node>::iterator init) : it(init) {}
+
+        iterator& operator++() {
+            ++it;
+            return *this;
+        }
+
+        bool operator!=(const iterator& other) const {
+            return it != other.it;
+        }
+
+        Node& operator*() {
+            return *it;
+        }
+    };
+
+    iterator begin() {
+        return iterator(children.begin());
+    }
+
+    iterator end() {
+        return iterator(children.end());
+    }
 };
 
 bool operator==(const Elem& elem, const Elem& other);
@@ -377,14 +357,6 @@ struct Document {
 
     std::optional<Decl> remove_decl(const std::string& rtag);
 
-    std::vector<BaseNode>::iterator begin() {
-        return children.begin();
-    }
-
-    std::vector<BaseNode>::iterator end() {
-        return children.end();
-    }
-
     Document& add_node(BaseVariant node) {
         children.emplace_back(std::move(node));
         return *this;
@@ -416,6 +388,35 @@ struct Document {
     Document& operator=(const Document& other);
 
     std::string serialize() const;
+
+    class iterator {
+    private:
+        std::vector<BaseNode>::iterator it;
+
+    public:
+        explicit iterator(std::vector<BaseNode>::iterator init) : it(init) {}
+
+        iterator& operator++() {
+            ++it;
+            return *this;
+        }
+
+        bool operator!=(const iterator& other) const {
+            return it != other.it;
+        }
+
+        BaseNode& operator*() {
+            return *it;
+        }
+    };
+
+    iterator begin() {
+        return iterator(children.begin());
+    }
+
+    iterator end() {
+        return iterator(children.end());
+    }
 };
 
 template<typename F1, typename F2>
@@ -471,8 +472,8 @@ struct ParseException : public std::runtime_error {
     ParseError code;
 
     explicit ParseException(std::string& m, ParseError code) : std::runtime_error(m), code(code) {
-#if DEBUG_XTREE_HD
-        printf("Threw a parse exception %s: %d", m.c_str(), code);
+#if DEBUG
+        fprintf(stderr, "Threw a parse exception %s: %d\n", m.c_str(), code);
 #endif
     }
 };
