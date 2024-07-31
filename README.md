@@ -48,7 +48,7 @@ Load and parse an XML file.
 
 ```c++
 // parses into a tree without modifying the input string
-xtree::Document first_document = xtree::Document::from_string("<Root> <Child> Hello World! </Child> </Root>");
+xtree::Document first_document = xtree::Document::from_string("<Root> Hello World! </Root>");
 
 // parses the file into a tree without reading the file into a string
 xtree::Document second_document = xtree::Document::from_file("file.txt");
