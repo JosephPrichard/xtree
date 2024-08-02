@@ -306,7 +306,7 @@ void test_copy_node() {
     auto child = xtree::Elem("Child", {{"Name", "Joseph"}});
 
     auto root = xtree::Elem("Test", {{"TestId", "0001"}});
-    root.add_node(xtree::Elem::from_other(child));
+    root.add_node(child.clone());
     root.add_node(std::move(child));
     root.add_node(xtree::Elem("Name"));
 
@@ -498,7 +498,7 @@ void test_copy_init() {
         .add_node(xtree::Elem("Four")
             .add_node(xtree::Elem("Five")));
 
-    auto root2 = xtree::Elem::from_other(root1);
+    auto root2 = root1.clone();
 
     if (root1 != root2) {
         fail_test(root1.serialize(), root2.serialize());

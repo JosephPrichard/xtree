@@ -99,7 +99,7 @@ struct Node {
 
     Node(Node&&) = default;
 
-    static Node from_other(const Node& other);
+    Node clone();
 
     bool is_cmnt() const {
         return holds_alternative<Cmnt>(data);
@@ -181,9 +181,10 @@ struct Elem {
     Elem(std::string tag, std::vector<Attr> attributes, std::vector<Node> children) noexcept
         : tag(std::move(tag)), attrs(std::move(attributes)), children(std::move(children)) {}
 
-    ~Elem();
+    // recursive dtor that released all unique_ptrs below the current elem
+    ~Elem() = default;
 
-    static Elem from_other(const Elem& other);
+    Elem clone();
 
     Elem(Elem&&) = default;
 

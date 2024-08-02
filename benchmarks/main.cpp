@@ -5,8 +5,14 @@
 #include <random>
 #include "../include/xtree.hpp"
 
+#define LOG_FILE true
+
+#if LOG_FILE
 std::ofstream OUT("../outlogs.txt");
-//std::ostream& OUT = std::cout;
+#endif
+#if !LOG_FILE
+std::ostream& OUT = std::cout;
+#endif
 
 xtree::Document create_benchmark_file(const std::string& file_path, int node_count) {
     auto start = std::chrono::steady_clock::now();

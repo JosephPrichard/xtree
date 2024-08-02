@@ -1,9 +1,33 @@
 Parsing
                           File path      Mode     Runs count           File size     Total time        Average time     Throughput           Allocated          Node count
-      ../input/employee_records.xml      File       100 runs       10.61 kb/file       13.26 ms        0.13 ms/file     80.03 mb/s       43.99 kb/file      480 nodes/file
-         ../input/plant_catalog.xml      File       100 runs        8.74 kb/file       11.82 ms        0.12 ms/file     73.94 mb/s       42.58 kb/file      470 nodes/file
-         ../input/books_catalog.xml    Memory      1000 runs        4.41 kb/file       36.30 ms        0.04 ms/file    121.61 mb/s       16.72 kb/file      158 nodes/file
-    ../input/employee_hierarchy.xml    Memory      1000 runs        3.14 kb/file       21.13 ms        0.02 ms/file    148.39 mb/s        6.93 kb/file       71 nodes/file
-            ../input/book_store.xml    Memory      1000 runs        0.97 kb/file        9.21 ms        0.01 ms/file    105.73 mb/s        4.93 kb/file       45 nodes/file
-              ../input/gie_file.xml    Memory        10 runs     1052.62 kb/file       37.90 ms        3.79 ms/file    277.76 mb/s     1471.90 kb/file     5439 nodes/file
-             ../input/gie_file2.xml    Memory        10 runs     1030.78 kb/file       41.88 ms        4.19 ms/file    246.15 mb/s     1399.25 kb/file     4295 nodes/file
+      ../input/employee_records.xml      File       100 runs       10.61 kb/file       13.40 ms        0.13 ms/file     79.21 mb/s       43.99 kb/file      480 nodes/file
+         ../input/plant_catalog.xml      File       100 runs        8.74 kb/file       12.13 ms        0.12 ms/file     72.07 mb/s       42.58 kb/file      470 nodes/file
+         ../input/books_catalog.xml    Memory      1000 runs        4.41 kb/file       37.76 ms        0.04 ms/file    116.90 mb/s       16.72 kb/file      158 nodes/file
+    ../input/employee_hierarchy.xml    Memory      1000 runs        3.14 kb/file       20.93 ms        0.02 ms/file    149.85 mb/s        6.93 kb/file       71 nodes/file
+            ../input/book_store.xml    Memory      1000 runs        0.97 kb/file        8.63 ms        0.01 ms/file    112.87 mb/s        4.93 kb/file       45 nodes/file
+              ../input/gie_file.xml    Memory        10 runs     1052.62 kb/file       38.13 ms        3.81 ms/file    276.09 mb/s     1471.90 kb/file     5439 nodes/file
+             ../input/gie_file2.xml    Memory        10 runs     1030.78 kb/file       35.51 ms        3.55 ms/file    290.29 mb/s     1399.25 kb/file     4295 nodes/file
+           ../input/random_dump.xml      File         1 runs    80740.19 kb/file     1159.67 ms     1159.67 ms/file     69.62 mb/s   222492.87 kb/file  1777639 nodes/file
+           ../input/random_dump.xml    Memory         1 runs    80740.19 kb/file      849.90 ms      849.90 ms/file     95.00 mb/s   222492.87 kb/file  1777639 nodes/file
+
+Printing
+                          File path     Runs count          Total time        Average time
+              ../input/gie_file.xml       100 runs           594.34 ms        5.94 ms/file
+             ../input/gie_file2.xml       100 runs          1058.83 ms       10.59 ms/file
+           ../input/random_dump.xml         3 runs          1289.75 ms      429.92 ms/file
+
+Copy + Normalization
+                          File path     Runs count          Total time        Average time        Remove count
+           ../input/random_dump.xml         3 runs          2284.55 ms      761.52 ms/file       2667594 nodes
+
+CopyAssign + Equality
+                          File path     Runs count          Total time        Average time
+              ../input/gie_file.xml       100 runs            47.49 ms        0.47 ms/file
+             ../input/gie_file2.xml       100 runs            39.94 ms        0.40 ms/file
+           ../input/random_dump.xml         3 runs          1863.49 ms      621.16 ms/file
+
+Copy + Equality
+                          File path     Runs count          Total time        Average time
+              ../input/gie_file.xml       100 runs            46.99 ms        0.47 ms/file
+             ../input/gie_file2.xml       100 runs            41.40 ms        0.41 ms/file
+           ../input/random_dump.xml         3 runs          1549.93 ms      516.64 ms/file

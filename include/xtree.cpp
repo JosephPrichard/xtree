@@ -9,12 +9,6 @@
 #include <optional>
 #include "xtree.hpp"
 
-#define RECUR_PRINT false
-#define RECUR_NORMAL false
-#define RECUR_COPY false
-#define RECUR_CMP true
-#define RECUR_DTOR true
-
 using namespace xtree;
 
 typedef long long i64;
@@ -892,51 +886,6 @@ void Document::remove_decls(const std::string& rtag) {
     children.shrink_to_fit();
 }
 
-#if RECUR_NORMAL
-size_t Elem::normalize() {
-    size_t remove_count = 0;
-
-    Text* prev_text = nullptr;
-    size_t back = 0;
-
-    for (size_t i = 0; i < children.size(); i++) {
-        Node* child_ptr = &children[i];
-
-        if (back != 0) {
-            // shift the element back one by moving, depending on how many elements have been removed so far
-            auto index = i - back;
-            children[index] = std::move(*child_ptr);
-            child_ptr = &children[index];
-        }
-
-        if (child_ptr->is_text()) {
-            auto& child_text = child_ptr->as_text();
-            if (prev_text != nullptr) {
-                prev_text->data += child_text.data;
-                remove_count++;
-                back++;
-            }
-            else {
-                prev_text = &child_text;
-            }
-        }
-        else {
-            if (child_ptr->is_elem()) {
-                auto elem = &child_ptr->as_elem();
-                remove_count += elem->normalize();
-            }
-            prev_text = nullptr;
-        }
-    }
-
-    children.erase(children.end() - static_cast<long long>(back), children.end());
-    children.shrink_to_fit();
-
-    return remove_count;
-}
-#endif
-
-#if !RECUR_NORMAL
 size_t Elem::normalize() {
     std::stack<Elem*> stack;
     stack.push(this);
@@ -988,7 +937,6 @@ size_t Elem::normalize() {
 
     return remove_count;
 }
-#endif
 
 Docstats xtree::stat_document(Document& document) {
     Docstats stats{0, 0};
@@ -1059,32 +1007,21 @@ Docstats xtree::stat_document(Document& document) {
     return stats;
 }
 
-#if RECUR_COPY
-Elem Elem::from_other(const Elem& other) {
-    Elem elem(other.tag, other.attrs);
-    for (auto& child : other.children)
-        elem.children.push_back(Node::from_other(child));
-    return elem;
-}
-#endif
-
-#if !RECUR_COPY
 // a stack frame for the copy element function to avoid a recursive-loop
-// exists as a top level declaration so multiple elements can be copied reusing the same stack using the internal copy_elem func
-struct CopyFrame {
+struct CloneFrame {
     const Elem* other_ptr;
     size_t other_i;
     Elem* copy_ptr;
 };
 
 // an internal "overload" of the Elem::from_other function that allows us to reuse the same stack when we need to copy a lot of elements at a time
-Elem copy_elem(const Elem& other, std::stack<CopyFrame>& stack) {
+Elem clone_elem(const Elem& other, std::stack<CloneFrame>& stack) {
     Elem elem(other.tag, other.attrs);
 
     stack.emplace(&other, 0, &elem);
 
     while (!stack.empty()) {
-        CopyFrame& top = stack.top();
+        CloneFrame& top = stack.top();
 
         auto& copy = top.copy_ptr;
         auto curr = top.other_ptr;
@@ -1123,9 +1060,9 @@ Elem copy_elem(const Elem& other, std::stack<CopyFrame>& stack) {
 }
 
 // an internal "overload" of the Node::from_other function that allows us to reuse a stack in the case the node is an elem
-Node copy_node(const Node& other, std::stack<CopyFrame>& stack) {
+Node clone_node(const Node& other, std::stack<CloneFrame>& stack) {
     if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&other.data))
-        return Node(std::make_unique<Elem>(copy_elem(**elem_ptr, stack)));
+        return Node(std::make_unique<Elem>(clone_elem(**elem_ptr, stack)));
     else if (auto cmnt = std::get_if<Cmnt>(&other.data))
         return Node(*cmnt);
     else if (auto text = std::get_if<Text>(&other.data))
@@ -1134,18 +1071,17 @@ Node copy_node(const Node& other, std::stack<CopyFrame>& stack) {
         throw std::runtime_error("unknown variant case");
 }
 
-Elem Elem::from_other(const Elem& other) {
-    std::stack<CopyFrame> stack;
-    return copy_elem(other, stack);
+Elem Elem::clone() {
+    std::stack<CloneFrame> stack;
+    return clone_elem(*this, stack);
 }
-#endif
 
-Node Node::from_other(const Node& other) {
-    if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&other.data))
-        return Node(std::make_unique<Elem>(Elem::from_other(**elem_ptr)));
-    else if (auto cmnt = std::get_if<Cmnt>(&other.data))
+Node Node::clone() {
+    if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&data))
+        return Node(std::make_unique<Elem>((*elem_ptr)->clone()));
+    else if (auto cmnt = std::get_if<Cmnt>(&data))
         return Node(*cmnt);
-    else if (auto text = std::get_if<Text>(&other.data))
+    else if (auto text = std::get_if<Text>(&data))
         return Node(*text);
     else
         throw std::runtime_error("unknown variant case");
@@ -1156,7 +1092,7 @@ Document Document::from_other(const Document& other) {
     document.children = other.children;
 
     if (other.root != nullptr)
-        document.root = std::make_unique<Elem>(Elem::from_other(*other.root));
+        document.root = std::make_unique<Elem>(other.root->clone());
 
     return document;
 }
@@ -1168,12 +1104,11 @@ Document& Document::operator=(const Document& other) {
     children = other.children;
 
     if (other.root != nullptr)
-        root = std::make_unique<Elem>(Elem::from_other(*other.root));
+        root = std::make_unique<Elem>(other.root->clone());
 
     return *this;
 }
 
-#if RECUR_COPY
 Elem& Elem::operator=(const Elem& other) {
     if (this == &other)
         return *this;
@@ -1185,9 +1120,11 @@ Elem& Elem::operator=(const Elem& other) {
     std::vector<Node> temp_nodes;
     temp_nodes.reserve(other.children.size());
 
+    std::stack<CloneFrame> stack;
+
     for (const Node& node: other.children) {
-        // starts a recursive call-chain to copy the entire element hierarchy
-        temp_nodes.push_back(Node::from_other(node));
+        // we use the clone_node function when copying these nodes so that we can reuse the stack in the case we have multiple elements to copy.
+        temp_nodes.push_back(clone_node(node, stack));
     }
 
     children.clear();
@@ -1197,35 +1134,6 @@ Elem& Elem::operator=(const Elem& other) {
 
     return *this;
 }
-#endif
-
-#if !RECUR_COPY
-Elem& Elem::operator=(const Elem& other) {
-    if (this == &other)
-        return *this;
-
-    tag = other.tag;
-    attrs = other.attrs;
-
-    // we must store the copied nodes somewhere before we clear and append since other.child_nodes might be a child of child_nodes
-    std::vector<Node> temp_nodes;
-    temp_nodes.reserve(other.children.size());
-
-    std::stack<CopyFrame> stack;
-
-    for (const Node& node: other.children) {
-        // we use the copy_node function when copying these nodes so that we can reuse the stack in the case we have multiple elements to copy.
-        temp_nodes.push_back(copy_node(node, stack));
-    }
-
-    children.clear();
-    for (auto& node: temp_nodes) {
-        children.push_back(std::move(node));
-    }
-
-    return *this;
-}
-#endif
 
 Node& Node::operator=(Node&& other) noexcept {
     if (this == &other)
@@ -1249,7 +1157,7 @@ bool xtree::operator==(const Node& node, const Node& other) {
     return node.data == other.data;
 }
 
-#if RECUR_CMP
+// recursive implementation of comparison operator...
 bool xtree::operator==(const Elem& elem, const Elem& other)  {
     if (elem.tag != other.tag || elem.attrs != other.attrs)
         return false;
@@ -1262,60 +1170,6 @@ bool xtree::operator==(const Elem& elem, const Elem& other)  {
 
     return true;
 }
-#endif
-
-#if !RECUR_CMP
-bool xtree::operator==(const Elem& elem, const Elem& other)  {
-    // base case: just check if the elem fields themselves are equal - if not we don't even need to check the children
-    if (elem.tag != other.tag || elem.attrs != other.attrs)
-        return false;
-    if (elem.children.size() != other.children.size())
-        return false;
-
-    struct Frame {
-        const Elem* lhs_ptr;
-        const Elem* rhs_ptr;
-        size_t i;
-    };
-
-    std::stack<Frame> stack;
-    stack.emplace(&elem, &other, 0);
-
-    while (!stack.empty()) {
-        Frame& top = stack.top();
-        auto lhs = top.lhs_ptr;
-        auto rhs = top.rhs_ptr;
-
-        if (top.i == 0) {
-            // first check if the elem fields of this stack frame are equal - if not we can just stop early
-            if (lhs->tag != rhs->tag || lhs->attrs != rhs->attrs)
-                return false;
-            if (lhs->children.size() != rhs->children.size())
-                return false;
-        }
-
-        if (top.i < lhs->children.size()) { // invariant: rhs->children.size() == lhs->children.size() is true
-            auto& lhs_child = lhs->children[top.i];
-            auto& rhs_child = rhs->children[top.i];
-            top.i++;
-
-            if (lhs_child.is_elem() && rhs_child.is_elem()) { // we need a special case to handle if the nodes are BOTH elems
-                auto elem_lhs_child = &lhs_child.as_elem();
-                auto elem_rhs_child = &rhs_child.as_elem();
-                stack.emplace(elem_lhs_child, elem_rhs_child, 0); // we'll handle this child in the next stack frame...
-            }
-            else if (lhs_child.data != rhs_child.data ) {
-                // otherwise just check if the variant itself - we don't care if they are, and we stop early if they're not equal
-                return false;
-            }
-        } else {
-            stack.pop();
-        }
-    }
-
-    return true;
-}
-#endif
 
 bool xtree::operator==(const Document& document, const Document& other) {
     if (document.root != nullptr && other.root != nullptr) {
@@ -1335,50 +1189,6 @@ bool xtree::operator==(const Document& document, const Document& other) {
 
     return true;
 }
-
-#if RECUR_DTOR
-Elem::~Elem() = default;
-#endif
-
-#if !RECUR_DTOR
-Elem::~Elem() {
-    if (children.empty())
-        return;
-
-    struct Frame {
-        Elem* ptr;
-        size_t i;
-    };
-
-    // we manually delete all elems in the hierarchy rather than using recursive destruction
-    std::stack<Frame> stack;
-    stack.emplace(this, 0);
-
-    while (!stack.empty()) {
-        Frame& top = stack.top();
-        Elem* curr = top.ptr;
-
-        if (top.i < curr->children.size()) {
-            auto& child = curr->children[top.i++];
-            if (auto elem_ptr = std::get_if<std::unique_ptr<Elem>>(&child.data)) {
-                // we release this element into a pointer we can delete manually
-                if (elem_ptr != nullptr)
-                    stack.emplace(elem_ptr->release(), 0);
-            }
-        }
-        else {
-            // we don't free this using delete, because we can't be sure if it was allocated dynamically or not
-            if (curr != this) {
-                // remove all children to make sure we don't start a recursive call chain on freed memory
-                curr->children.clear();
-                // we know any non-this pointer is allocated dynamically because it was in the unique_ptr
-                delete curr;
-            }
-            stack.pop();
-        }
-    }
-}
-#endif
 
 std::ostream& xtree::operator<<(std::ostream& os, const Attr& attr) {
     os << attr.name << "=" << "\"";
@@ -1462,37 +1272,17 @@ std::ostream& xtree::operator<<(std::ostream& os, const BaseNode& node) {
     return os;
 }
 
-#if RECUR_PRINT
+struct PrintFrame {
+    const Elem* ptr;
+    size_t i;
+};
+
 std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
-    os << "<" << elem.tag;
-    for (size_t i = 0; i < elem.attrs.size(); i++) {
-        if (i == 0)
-            os << " ";
-        os << elem.attrs[i];
-        if (i < elem.attrs.size() - 1)
-            os << " ";
-    }
-    os << "> ";
-    for (const Node& child : elem.children)
-        os << child;
-
-    os << "</" << elem.tag << "> ";
-    return os;
-}
-#endif
-
-#if !RECUR_PRINT
-std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
-    struct Frame {
-        const Elem* ptr;
-        size_t i;
-    };
-
-    std::stack<Frame> stack;
+    std::stack<PrintFrame> stack;
     stack.emplace(&elem, 0);
 
     while (!stack.empty()) {
-        Frame& top = stack.top();
+        PrintFrame& top = stack.top();
 
         auto curr = top.ptr;
         if (top.i == 0) {
@@ -1531,4 +1321,3 @@ std::ostream& xtree::operator<<(std::ostream& os, const Elem& elem) {
 
     return os;
 }
-#endif
