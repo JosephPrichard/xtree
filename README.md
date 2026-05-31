@@ -7,7 +7,7 @@ XTree uses a Document Object Model (DOM), meaning the XML data is parsed into a 
 
 XTree uses an iterative variant of the recursive descent algorithm to parse a set of mutually recursive structures into DOM-like tree structure. XTree provides a myriad of utility functions - making it effective at creating XML documents or modifying documents once they are parsed.
 
-Ideally, XTree is used when your you need to parse one or many XML documents, modify them, and serialize them back to a file.
+Ideally, XTree is used when you need to parse one or many XML documents, modify them, and serialize them back to a file.
 
 ### Utilities
 XTree supports utility methods to search for nodes, remove nodes, normalize the tree, print to an output stream, or copy the tree.
